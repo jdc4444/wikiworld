@@ -169,6 +169,7 @@
         left: 0;
         right: 0;
         bottom: 48px;
+        height: calc(100vh - 48px);
         z-index: 9998;
         background: var(--white);
         border-top: 1px solid var(--gray-200);
@@ -177,11 +178,14 @@
         transform: translateY(100%);
         transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         will-change: transform;
+        visibility: hidden;
       }
       .article-panel.peek {
+        visibility: visible;
         transform: translateY(calc(100% - var(--peek-height, 220px)));
       }
       .article-panel.full {
+        visibility: visible;
         transform: translateY(0);
       }
       .article-panel.dragging {
@@ -204,7 +208,7 @@
         background: #ccc;
       }
       .article-panel-inner {
-        height: calc(100vh - 48px - 30px);
+        height: calc(100% - 30px);
         overflow-y: auto;
         padding: 8px 40px 40px;
         -webkit-overflow-scrolling: touch;
@@ -879,11 +883,13 @@
 
           // Process HTML extract
           let html = page.extract || "";
-          // Strip pronunciation from the raw HTML
-          html = stripPronunciation(html);
-          // Clean up Wikipedia's HTML
+          // Clean up Wikipedia's HTML first (before pronunciation stripping)
           html = html.replace(/<span[^>]*class="mw-editsection"[^>]*>.*?<\/span>/gs, "");
           html = html.replace(/<\/?span[^>]*>/g, "");
+          html = html.replace(/<\/?b>/g, ""); // remove bold tags (title repetition)
+          html = html.replace(/<\/?i>/g, ""); // remove italic tags
+          // Strip pronunciation from cleaned text
+          html = stripPronunciation(html);
 
           const wikiUrl = page.fullurl || `https://en.wikipedia.org/wiki/${encodeURIComponent(title)}`;
           html += `<a class="article-link" href="${wikiUrl}" target="_blank">Read full article on Wikipedia →</a>`;
