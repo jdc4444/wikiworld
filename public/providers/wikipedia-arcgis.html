@@ -180,6 +180,10 @@
         will-change: transform;
         visibility: hidden;
       }
+      .article-panel.tab {
+        visibility: visible;
+        transform: translateY(calc(100% - 28px)); /* just the drag handle */
+      }
       .article-panel.peek {
         visibility: visible;
         transform: translateY(calc(100% - var(--peek-height, 220px)));
@@ -723,27 +727,26 @@
       // ─── Three-state panel: collapsed → peek → full ──────────
       const dragHandle = document.getElementById("drag-handle");
       const articleInner = document.getElementById("article-inner");
-      let panelState = "collapsed"; // "collapsed" | "peek" | "full"
+      let panelState = "collapsed"; // "collapsed" | "tab" | "peek" | "full"
 
       function setPanelState(state) {
         panelState = state;
-        overlayEl.classList.remove("peek", "full");
-        if (state === "peek") overlayEl.classList.add("peek");
+        overlayEl.classList.remove("tab", "peek", "full");
+        if (state === "tab") overlayEl.classList.add("tab");
+        else if (state === "peek") overlayEl.classList.add("peek");
         else if (state === "full") overlayEl.classList.add("full");
-        // When collapsed, reset scroll
         if (state === "collapsed") {
           overlayLock++;
           articleInner.scrollTop = 0;
         }
-        // Disable scroll in peek mode, enable in full
         articleInner.style.overflowY = state === "full" ? "auto" : "hidden";
       }
 
-      overlayClose.addEventListener("click", () => setPanelState("collapsed"));
+      overlayClose.addEventListener("click", () => setPanelState("tab"));
       document.addEventListener("keydown", (e) => {
         if (e.key === "Escape") {
           if (panelState === "full") setPanelState("peek");
-          else if (panelState === "peek") setPanelState("collapsed");
+          else if (panelState === "peek") setPanelState("tab");
         }
       });
 
@@ -772,7 +775,7 @@
         const y = e.clientY ?? e.touches?.[0]?.clientY ?? 0;
         const dy = y - dragStartY;
         const fullH = panelFullHeight();
-        const maxDown = fullH - 220; // never hide below peek height
+        const maxDown = fullH - 28; // stop at tab (drag handle visible)
         const newTranslate = Math.max(0, Math.min(maxDown, dragStartTranslate + dy));
         overlayEl.style.transform = `translateY(${newTranslate}px)`;
         e.preventDefault();
@@ -787,22 +790,25 @@
         const currentY = getPanelTranslateY();
         const fullH = panelFullHeight();
         const peekOffset = fullH - 220;
-        const midpoint = peekOffset / 2;
+        const tabOffset = fullH - 28;
 
         if (panelState === "full") {
-          // Dragged down from full — snap to peek if past midpoint
-          if (currentY > midpoint) setPanelState("peek");
+          if (currentY > peekOffset - 40) setPanelState("peek");
           else setPanelState("full");
         } else if (panelState === "peek") {
-          // From peek: drag up → full, stays at peek otherwise (can't collapse by drag)
           if (currentY < peekOffset - 80) setPanelState("full");
+          else if (currentY > peekOffset + 80) setPanelState("tab");
           else setPanelState("peek");
+        } else if (panelState === "tab") {
+          if (currentY < tabOffset - 80) setPanelState("peek");
+          else setPanelState("tab");
         }
       }
 
-      // Tap handle to toggle peek↔full
+      // Tap handle to cycle: tab → peek → full → peek
       dragHandle.addEventListener("click", () => {
-        if (panelState === "peek") setPanelState("full");
+        if (panelState === "tab") setPanelState("peek");
+        else if (panelState === "peek") setPanelState("full");
         else if (panelState === "full") setPanelState("peek");
       });
 
