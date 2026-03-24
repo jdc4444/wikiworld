@@ -392,20 +392,23 @@
         fillOpacity: 0.35,
       };
 
-      // Force daytime lighting — set to noon UTC today
-      // ArcGIS uses UTC for sun position calculation
-      const noon = new Date();
-      noon.setUTCHours(18, 0, 0, 0); // 18:00 UTC = ~1pm EST / ~10am PST
-      view.environment = {
-        lighting: {
-          type: "sun",
-          date: noon,
-          directShadowsEnabled: true,
-          ambientOcclusionEnabled: true,
-          cameraTrackingEnabled: true,
-        },
-        atmosphere: { quality: "high" },
-      };
+      // Force consistent daytime lighting
+      // cameraTrackingEnabled: false so sun doesn't change when flying to different timezones
+      function setLightingTime(hour) {
+        const d = new Date();
+        d.setUTCHours(hour, 0, 0, 0);
+        view.environment = {
+          lighting: {
+            type: "sun",
+            date: d,
+            directShadowsEnabled: true,
+            ambientOcclusionEnabled: true,
+            cameraTrackingEnabled: false,
+          },
+          atmosphere: { quality: "high" },
+        };
+      }
+      setLightingTime(12); // noon UTC — consistent everywhere
 
       view.watch("camera", saveCamera);
 
@@ -534,9 +537,7 @@
       function updateLighting() {
         const h = +todRange.value;
         todValue.textContent = formatTime(h);
-        const d = new Date();
-        d.setUTCHours(Math.floor(h) + 5, Math.round((h % 1) * 60), 0, 0); // +5 = rough EST→UTC
-        view.environment.lighting.date = d;
+        setLightingTime(h);
         view.environment.lighting.directShadowsEnabled = shadowsToggle.checked;
       }
 
@@ -786,7 +787,7 @@
           // Auto-pitch: lower pitch for taller buildings so they don't crop
           // 20m → 72°, 100m → 64°, 300m → 44°, 800m → 30° (clamped)
           const autoPitch = Math.max(30, Math.min(72, 74 - buildingHeight * 0.1));
-          const autoZoom = buildingHeight > 200 ? 17 : 18;
+          const autoZoom = 18;
 
           // Show article overlay first, then fly
           const meta = buildingHeight ? `${buildingHeight.toFixed(0)}m` : "";
