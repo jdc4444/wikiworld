@@ -161,65 +161,115 @@
       .color-swatch.active { border-color: #000; box-shadow: 0 0 0 1px #fff inset; }
 
       /* ─── Article overlay ─── */
-      .article-overlay {
+      /* ─── Article panel — slides up from bottom bar ─── */
+      .article-panel {
         position: fixed;
-        top: 0;
-        right: 0;
-        bottom: 48px; /* above bottom bar */
         left: 0;
-        z-index: 9999;
+        right: 0;
+        bottom: 48px; /* sits on top of bottom bar */
+        max-height: 0;
         overflow: hidden;
-        pointer-events: none;
-        opacity: 0;
-        transition: opacity 0.3s ease;
-        padding: 24px 32px;
+        z-index: 9998;
+        background: var(--white);
+        border-top: 1px solid var(--gray-200);
+        transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 -4px 24px rgba(0,0,0,0.12);
       }
-      .article-overlay.open {
-        opacity: 1;
-        pointer-events: auto;
+      .article-panel.open {
+        max-height: calc(100vh - 48px);
       }
-      .article-overlay .article-close {
-        position: absolute;
-        top: 20px;
-        right: 24px;
-        background: none;
-        color: #000;
-        border: 1px solid var(--gray-200);
-        border-radius: 4px;
-        padding: 4px 12px;
-        font-size: 13px;
-        cursor: pointer;
-        z-index: 25;
+      .article-panel-inner {
+        height: calc(100vh - 48px - 1px);
+        overflow-y: auto;
+        padding: 32px 40px 40px;
+        -webkit-overflow-scrolling: touch;
       }
-      .article-overlay .article-close:hover { background: #f0f0f0; }
-      .article-overlay .article-title {
-        font-size: 42px;
+      .article-panel .article-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        margin-bottom: 8px;
+      }
+      .article-panel .article-title {
+        font-size: 48px;
         font-weight: 900;
-        letter-spacing: -1.5px;
+        letter-spacing: -2px;
         line-height: 1.0;
         color: #000;
-        margin-bottom: 4px;
+        flex: 1;
       }
-      .article-overlay .article-meta {
+      .article-panel .article-close {
+        background: none;
+        color: #666;
+        border: 1px solid var(--gray-200);
+        border-radius: 6px;
+        padding: 6px 14px;
+        font-size: 14px;
+        cursor: pointer;
+        margin-left: 16px;
+        margin-top: 8px;
+        flex-shrink: 0;
+      }
+      .article-panel .article-close:hover { background: #f5f5f5; color: #000; }
+      .article-panel .article-meta {
         font-size: 11px;
         color: #999;
         text-transform: uppercase;
         letter-spacing: 1.5px;
-        margin-bottom: 14px;
+        margin-bottom: 20px;
       }
-      .article-overlay .article-body {
+      .article-panel .article-thumb {
+        float: right;
+        max-width: 280px;
+        margin: 0 0 16px 24px;
+        border-radius: 6px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      }
+      .article-panel .article-body {
         font-family: "Georgia", "Times New Roman", "Times", serif;
-        font-size: 26px;
+        font-size: 18px;
         font-weight: 400;
-        line-height: 1.4;
-        color: #000;
-        column-count: 1;
-        max-height: calc(100% - 100px);
-        overflow: hidden;
+        line-height: 1.6;
+        color: #222;
       }
-      .article-overlay .article-body p { margin-bottom: 0.7em; break-inside: avoid; }
-      .article-overlay .article-body a { color: #000; text-decoration: underline; text-underline-offset: 2px; }
-      .article-overlay .article-thumb { display: none; }
+      .article-panel .article-body h2 {
+        font-family: var(--font);
+        font-size: 22px;
+        font-weight: 800;
+        letter-spacing: -0.5px;
+        color: #000;
+        margin: 28px 0 12px;
+        padding-bottom: 6px;
+        border-bottom: 1px solid var(--gray-200);
+      }
+      .article-panel .article-body h3 {
+        font-family: var(--font);
+        font-size: 17px;
+        font-weight: 700;
+        color: #000;
+        margin: 20px 0 8px;
+      }
+      .article-panel .article-body p { margin-bottom: 0.8em; }
+      .article-panel .article-body a { color: #1a1a1a; text-decoration: underline; text-underline-offset: 2px; }
+      .article-panel .article-body a:hover { color: #e63946; }
+      .article-panel .article-body ul, .article-panel .article-body ol { margin: 0.5em 0 1em 1.5em; }
+      .article-panel .article-body li { margin-bottom: 0.3em; }
+      .article-panel .article-body img { max-width: 100%; border-radius: 4px; }
+      .article-panel .article-body table { font-size: 14px; border-collapse: collapse; margin: 1em 0; }
+      .article-panel .article-body td, .article-panel .article-body th { padding: 4px 8px; border: 1px solid #eee; }
+      .article-panel .article-link {
+        display: inline-block;
+        margin-top: 16px;
+        padding: 10px 20px;
+        background: #000;
+        color: #fff;
+        text-decoration: none;
+        border-radius: 6px;
+        font-family: var(--font);
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .article-panel .article-link:hover { background: #333; }
     </style>
   </head>
   <body>
@@ -333,11 +383,16 @@
       </div>
     </div>
 
-    <div class="article-overlay" id="article-overlay">
-      <button class="article-close" id="article-close">×</button>
-      <div class="article-title" id="article-title"></div>
-      <div class="article-meta" id="article-meta"></div>
-      <div class="article-body" id="article-body"></div>
+    <div class="article-panel" id="article-overlay">
+      <div class="article-panel-inner">
+        <div class="article-header">
+          <div class="article-title" id="article-title"></div>
+          <button class="article-close" id="article-close">Close</button>
+        </div>
+        <div class="article-meta" id="article-meta"></div>
+        <img class="article-thumb" id="article-thumb" style="display:none" />
+        <div class="article-body" id="article-body"></div>
+      </div>
     </div>
 
     <script type="module">
@@ -669,22 +724,28 @@
 
       let overlayLock = 0; // prevent accidental closure
 
+      const overlayThumb = document.getElementById("article-thumb");
+
       async function showArticleOverlay(title, meta) {
         const myLock = ++overlayLock;
         overlayTitle.textContent = title;
         overlayMeta.textContent = meta || "";
         overlayBody.innerHTML = `<p style="color:#999">Loading article…</p>`;
+        overlayThumb.style.display = "none";
         overlayEl.classList.add("open");
+        // Scroll to top
+        overlayEl.querySelector('.article-panel-inner').scrollTop = 0;
 
         try {
+          // Fetch full HTML extract + thumbnail + info
           const url = new URL("https://en.wikipedia.org/w/api.php");
           url.searchParams.set("action", "query");
           url.searchParams.set("titles", title);
-          url.searchParams.set("prop", "extracts|info");
-          url.searchParams.set("explaintext", "");
-          url.searchParams.set("exsectionformat", "plain");
-          url.searchParams.set("exchars", "4000");
+          url.searchParams.set("prop", "extracts|pageimages|info");
+          url.searchParams.set("exsectionformat", "wiki");
           url.searchParams.set("inprop", "url");
+          url.searchParams.set("piprop", "thumbnail");
+          url.searchParams.set("pithumbsize", "400");
           url.searchParams.set("format", "json");
           url.searchParams.set("origin", "*");
 
@@ -697,14 +758,25 @@
             return;
           }
 
-          const extract = stripPronunciation(page.extract || "");
-          const wikiUrl = page.fullurl || `https://en.wikipedia.org/wiki/${encodeURIComponent(title)}`;
-
-          const paragraphs = extract.split(/\n+/).filter(p => p.trim());
-          let html = paragraphs.map(p => `<p>${p}</p>`).join("");
-          html += `<p><a href="${wikiUrl}" target="_blank">Read full article on Wikipedia →</a></p>`;
-
           if (myLock !== overlayLock) return; // stale
+
+          // Show thumbnail if available
+          if (page.thumbnail?.source) {
+            overlayThumb.src = page.thumbnail.source;
+            overlayThumb.style.display = "block";
+          }
+
+          // Process HTML extract
+          let html = page.extract || "";
+          // Strip pronunciation from the raw HTML
+          html = stripPronunciation(html);
+          // Clean up Wikipedia's HTML
+          html = html.replace(/<span[^>]*class="mw-editsection"[^>]*>.*?<\/span>/gs, "");
+          html = html.replace(/<\/?span[^>]*>/g, "");
+
+          const wikiUrl = page.fullurl || `https://en.wikipedia.org/wiki/${encodeURIComponent(title)}`;
+          html += `<a class="article-link" href="${wikiUrl}" target="_blank">Read full article on Wikipedia →</a>`;
+
           overlayBody.innerHTML = html;
           overlayTitle.textContent = page.title || title;
           applyTypography();
