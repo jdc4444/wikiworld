@@ -852,12 +852,13 @@
         articleInner.scrollTop = 0;
 
         try {
-          // Fetch full HTML extract + thumbnail + info
+          // Fetch plaintext extract + thumbnail + info
           const url = new URL("https://en.wikipedia.org/w/api.php");
           url.searchParams.set("action", "query");
           url.searchParams.set("titles", title);
           url.searchParams.set("prop", "extracts|pageimages|info");
-          url.searchParams.set("exsectionformat", "wiki");
+          url.searchParams.set("explaintext", "");
+          url.searchParams.set("exsectionformat", "plain");
           url.searchParams.set("inprop", "url");
           url.searchParams.set("piprop", "thumbnail");
           url.searchParams.set("pithumbsize", "400");
@@ -881,19 +882,25 @@
             overlayThumb.style.display = "block";
           }
 
-          // Process HTML extract
-          let html = page.extract || "";
-          // Clean up Wikipedia's HTML first (before pronunciation stripping)
-          html = html.replace(/<span[^>]*class="mw-editsection"[^>]*>.*?<\/span>/gs, "");
-          html = html.replace(/<\/?span[^>]*>/g, "");
-          html = html.replace(/<\/?b>/g, ""); // remove bold tags (title repetition)
-          html = html.replace(/<\/?i>/g, ""); // remove italic tags
-          html = html.replace(/<\/?abbr[^>]*>/g, ""); // remove abbreviation tags
-          html = html.replace(/<sup[^>]*>.*?<\/sup>/gs, ""); // remove superscript refs
-          // Strip pronunciation from cleaned text
-          html = stripPronunciation(html);
-
+          // Process plaintext extract
+          let text = stripPronunciation(page.extract || "");
           const wikiUrl = page.fullurl || `https://en.wikipedia.org/wiki/${encodeURIComponent(title)}`;
+
+          // Convert plaintext to HTML: sections become h2, paragraphs become p
+          const lines = text.split(/\n/);
+          let html = "";
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            // Section headers: lines that are "== Title ==" in plaintext
+            if (/^==\s+/.test(trimmed)) {
+              const level = trimmed.startsWith("===") ? "h3" : "h2";
+              const heading = trimmed.replace(/^=+\s*/, "").replace(/\s*=+$/, "");
+              html += `<${level}>${heading}</${level}>`;
+            } else {
+              html += `<p>${trimmed}</p>`;
+            }
+          }
           html += `<a class="article-link" href="${wikiUrl}" target="_blank">Read full article on Wikipedia →</a>`;
 
           overlayBody.innerHTML = html;
