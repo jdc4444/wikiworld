@@ -161,27 +161,50 @@
       .color-swatch.active { border-color: #000; box-shadow: 0 0 0 1px #fff inset; }
 
       /* ─── Article overlay ─── */
-      /* ─── Article panel — slides up from bottom bar ─── */
+      /* ─── Article panel — draggable bottom sheet ─── */
       .article-panel {
         position: fixed;
         left: 0;
         right: 0;
-        bottom: 48px; /* sits on top of bottom bar */
-        max-height: 0;
-        overflow: hidden;
+        bottom: 48px;
         z-index: 9998;
         background: var(--white);
         border-top: 1px solid var(--gray-200);
-        transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1);
         box-shadow: 0 -4px 24px rgba(0,0,0,0.12);
+        border-radius: 12px 12px 0 0;
+        transform: translateY(100%);
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        will-change: transform;
       }
-      .article-panel.open {
-        max-height: calc(100vh - 48px);
+      .article-panel.peek {
+        transform: translateY(calc(100% - var(--peek-height, 220px)));
+      }
+      .article-panel.full {
+        transform: translateY(0);
+      }
+      .article-panel.dragging {
+        transition: none;
+      }
+      .article-panel .drag-handle {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 10px 0 4px;
+        cursor: grab;
+        user-select: none;
+        -webkit-user-select: none;
+      }
+      .article-panel .drag-handle:active { cursor: grabbing; }
+      .article-panel .drag-handle .handle-bar {
+        width: 36px;
+        height: 4px;
+        border-radius: 2px;
+        background: #ccc;
       }
       .article-panel-inner {
-        height: calc(100vh - 48px - 1px);
+        height: calc(100vh - 48px - 30px);
         overflow-y: auto;
-        padding: 32px 40px 40px;
+        padding: 8px 40px 40px;
         -webkit-overflow-scrolling: touch;
       }
       .article-panel .article-header {
@@ -384,7 +407,8 @@
     </div>
 
     <div class="article-panel" id="article-overlay">
-      <div class="article-panel-inner">
+      <div class="drag-handle" id="drag-handle"><div class="handle-bar"></div></div>
+      <div class="article-panel-inner" id="article-inner">
         <div class="article-header">
           <div class="article-title" id="article-title"></div>
           <button class="article-close" id="article-close">Close</button>
@@ -690,14 +714,100 @@
       const overlayBody = document.getElementById("article-body");
       const overlayClose = document.getElementById("article-close");
 
-      overlayClose.addEventListener("click", () => { overlayEl.classList.remove("open"); overlayLock++; });
+      // ─── Three-state panel: collapsed → peek → full ──────────
+      const dragHandle = document.getElementById("drag-handle");
+      const articleInner = document.getElementById("article-inner");
+      let panelState = "collapsed"; // "collapsed" | "peek" | "full"
+
+      function setPanelState(state) {
+        panelState = state;
+        overlayEl.classList.remove("peek", "full");
+        if (state === "peek") overlayEl.classList.add("peek");
+        else if (state === "full") overlayEl.classList.add("full");
+        // When collapsed, reset scroll
+        if (state === "collapsed") {
+          overlayLock++;
+          articleInner.scrollTop = 0;
+        }
+        // Disable scroll in peek mode, enable in full
+        articleInner.style.overflowY = state === "full" ? "auto" : "hidden";
+      }
+
+      overlayClose.addEventListener("click", () => setPanelState("collapsed"));
       document.addEventListener("keydown", (e) => {
-        if (e.key === "Escape") { overlayEl.classList.remove("open"); overlayLock++; }
+        if (e.key === "Escape") {
+          if (panelState === "full") setPanelState("peek");
+          else if (panelState === "peek") setPanelState("collapsed");
+        }
       });
-      // Click on empty area of overlay closes it
-      overlayEl.addEventListener("click", (e) => {
-        if (e.target === overlayEl) { overlayEl.classList.remove("open"); overlayLock++; }
+
+      // ─── Drag handling ────────────────────────────────────────
+      let dragStartY = 0, dragStartTranslate = 0, isDragging = false;
+      const panelFullHeight = () => window.innerHeight - 48;
+
+      function getPanelTranslateY() {
+        const t = getComputedStyle(overlayEl).transform;
+        if (!t || t === "none") return 0;
+        const m = t.match(/matrix.*\((.+)\)/);
+        return m ? parseFloat(m[1].split(",").pop()) : 0;
+      }
+
+      function onDragStart(e) {
+        if (panelState === "collapsed") return;
+        isDragging = true;
+        dragStartY = e.clientY ?? e.touches?.[0]?.clientY ?? 0;
+        dragStartTranslate = getPanelTranslateY();
+        overlayEl.classList.add("dragging");
+        e.preventDefault();
+      }
+
+      function onDragMove(e) {
+        if (!isDragging) return;
+        const y = e.clientY ?? e.touches?.[0]?.clientY ?? 0;
+        const dy = y - dragStartY;
+        // Only allow dragging down from full, or up/down from peek
+        const newTranslate = Math.max(0, dragStartTranslate + dy);
+        overlayEl.style.transform = `translateY(${newTranslate}px)`;
+        e.preventDefault();
+      }
+
+      function onDragEnd() {
+        if (!isDragging) return;
+        isDragging = false;
+        overlayEl.classList.remove("dragging");
+        overlayEl.style.transform = "";
+
+        const currentY = getPanelTranslateY();
+        const fullH = panelFullHeight();
+        const peekThreshold = fullH * 0.6;
+        const collapseThreshold = fullH * 0.85;
+
+        if (panelState === "full") {
+          // Dragged down from full
+          if (currentY > collapseThreshold) setPanelState("collapsed");
+          else if (currentY > peekThreshold) setPanelState("peek");
+          else setPanelState("full");
+        } else if (panelState === "peek") {
+          // From peek: drag up → full, drag down → collapse
+          const peekOffset = fullH - 220;
+          if (currentY < peekOffset - 80) setPanelState("full");
+          else if (currentY > peekOffset + 80) setPanelState("collapsed");
+          else setPanelState("peek");
+        }
+      }
+
+      // Tap handle to toggle peek↔full
+      dragHandle.addEventListener("click", () => {
+        if (panelState === "peek") setPanelState("full");
+        else if (panelState === "full") setPanelState("peek");
       });
+
+      dragHandle.addEventListener("mousedown", onDragStart);
+      dragHandle.addEventListener("touchstart", onDragStart, { passive: false });
+      document.addEventListener("mousemove", onDragMove);
+      document.addEventListener("touchmove", onDragMove, { passive: false });
+      document.addEventListener("mouseup", onDragEnd);
+      document.addEventListener("touchend", onDragEnd);
 
       function stripPronunciation(text) {
         return text
@@ -732,9 +842,8 @@
         overlayMeta.textContent = meta || "";
         overlayBody.innerHTML = `<p style="color:#999">Loading article…</p>`;
         overlayThumb.style.display = "none";
-        overlayEl.classList.add("open");
-        // Scroll to top
-        overlayEl.querySelector('.article-panel-inner').scrollTop = 0;
+        setPanelState("peek");
+        articleInner.scrollTop = 0;
 
         try {
           // Fetch full HTML extract + thumbnail + info
