@@ -784,10 +784,12 @@
             if (bldg.found && bldg.height) buildingHeight = bldg.height;
           } catch (_) {}
 
-          // Auto-pitch: lower pitch for taller buildings so they don't crop
-          // 20m → 72°, 100m → 64°, 300m → 44°, 800m → 30° (clamped)
-          const autoPitch = Math.max(30, Math.min(72, 74 - buildingHeight * 0.1));
-          const autoZoom = 18;
+          // Auto-pitch: taller buildings → higher pitch (more eye-level)
+          // with camera altitude raised to see the full building
+          // 20m → 55°, 100m → 62°, 300m → 72°, 800m → 80° (clamped)
+          const autoPitch = Math.min(80, Math.max(55, 55 + buildingHeight * 0.03));
+          // Raise camera altitude for tall buildings so we look UP at them
+          const cameraAlt = Math.max(200, buildingHeight * 0.8);
 
           // Show article overlay first, then fly
           const meta = buildingHeight ? `${buildingHeight.toFixed(0)}m` : "";
@@ -795,8 +797,8 @@
 
           // Fly to location, then highlight building
           await view.goTo({
-            center: [targetLon, targetLat],
-            zoom: autoZoom,
+            target: [targetLon, targetLat],
+            zoom: 18,
             heading: 15,
             tilt: autoPitch,
           }, { duration: 2000 });
