@@ -17,7 +17,7 @@
       }
 
       * { box-sizing: border-box; }
-      html, body { margin: 0; height: 100%; background: var(--white) !important; color: var(--black) !important; font-family: var(--font); font-size: 14px; -webkit-font-smoothing: antialiased; }
+      html, body { margin: 0; height: 100%; overflow: hidden; background: var(--white) !important; color: var(--black) !important; font-family: var(--font); font-size: 14px; -webkit-font-smoothing: antialiased; }
       .esri-view { background: transparent !important; }
       .esri-attribution { display: none !important; }
       .esri-ui { pointer-events: none !important; }
@@ -54,6 +54,8 @@
         align-items: center;
         gap: 6px;
         z-index: 100;
+        flex-shrink: 0;
+        position: relative;
       }
 
       .bottom-bar .input-row {
