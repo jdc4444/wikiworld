@@ -771,8 +771,9 @@
         if (!isDragging) return;
         const y = e.clientY ?? e.touches?.[0]?.clientY ?? 0;
         const dy = y - dragStartY;
-        // Only allow dragging down from full, or up/down from peek
-        const newTranslate = Math.max(0, dragStartTranslate + dy);
+        const fullH = panelFullHeight();
+        const maxDown = fullH - 220; // never hide below peek height
+        const newTranslate = Math.max(0, Math.min(maxDown, dragStartTranslate + dy));
         overlayEl.style.transform = `translateY(${newTranslate}px)`;
         e.preventDefault();
       }
@@ -785,19 +786,16 @@
 
         const currentY = getPanelTranslateY();
         const fullH = panelFullHeight();
-        const peekThreshold = fullH * 0.6;
-        const collapseThreshold = fullH * 0.85;
+        const peekOffset = fullH - 220;
+        const midpoint = peekOffset / 2;
 
         if (panelState === "full") {
-          // Dragged down from full
-          if (currentY > collapseThreshold) setPanelState("collapsed");
-          else if (currentY > peekThreshold) setPanelState("peek");
+          // Dragged down from full — snap to peek if past midpoint
+          if (currentY > midpoint) setPanelState("peek");
           else setPanelState("full");
         } else if (panelState === "peek") {
-          // From peek: drag up → full, drag down → collapse
-          const peekOffset = fullH - 220;
+          // From peek: drag up → full, stays at peek otherwise (can't collapse by drag)
           if (currentY < peekOffset - 80) setPanelState("full");
-          else if (currentY > peekOffset + 80) setPanelState("collapsed");
           else setPanelState("peek");
         }
       }
