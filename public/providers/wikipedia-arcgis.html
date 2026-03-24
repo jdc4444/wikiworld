@@ -888,6 +888,8 @@
           html = html.replace(/<\/?span[^>]*>/g, "");
           html = html.replace(/<\/?b>/g, ""); // remove bold tags (title repetition)
           html = html.replace(/<\/?i>/g, ""); // remove italic tags
+          html = html.replace(/<\/?abbr[^>]*>/g, ""); // remove abbreviation tags
+          html = html.replace(/<sup[^>]*>.*?<\/sup>/gs, ""); // remove superscript refs
           // Strip pronunciation from cleaned text
           html = stripPronunciation(html);
 
