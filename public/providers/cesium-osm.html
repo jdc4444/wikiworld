@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Cesium OSM Buildings</title>
+
+    <link href="https://cesium.com/downloads/cesiumjs/releases/1.126/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
+    <link href="/providers/provider.css" rel="stylesheet" />
+  </head>
+  <body>
+    <div id="scene"></div>
+    <script src="https://cesium.com/downloads/cesiumjs/releases/1.126/Build/Cesium/Cesium.js" crossorigin="anonymous"></script>
+    <script type="module">
+      import { attachOverlay, createProviderRuntime, zoomToRangeMeters } from "/providers/common.js";
+
+      attachOverlay("Cesium OSM Buildings", "Open 3D Tiles buildings in a native large-scene rendering stack.");
+
+      const runtime = await createProviderRuntime({
+        providerId: "cesium-osm",
+        capabilities: ["3D Tiles", "Open buildings", "Engine-friendly"],
+        onSettings,
+        getCamera,
+      });
+
+      if (!runtime.config.env.cesiumIonToken) {
+        runtime.fallback(
+          "Cesium ion token recommended",
+          "Add CESIUM_ION_TOKEN to .env to enable Cesium OSM Buildings reliably in this tester.",
+        );
+        runtime.status("error", "Missing token");
+        throw new Error("Missing token");
+      }
+
+      Cesium.Ion.defaultAccessToken = runtime.config.env.cesiumIonToken;
+
+      let viewer, tileset;
+      try {
+        viewer = new Cesium.Viewer("scene", {
+          animation: false,
+          baseLayerPicker: false,
+          geocoder: false,
+          homeButton: false,
+          infoBox: false,
+          timeline: false,
+          navigationHelpButton: false,
+          sceneModePicker: false,
+          selectionIndicator: false,
+          baseLayer: new Cesium.ImageryLayer(
+            new Cesium.OpenStreetMapImageryProvider({
+              url: "https://basemaps.cartocdn.com/light_nolabels/",
+            }),
+          ),
+        });
+      } catch (e) {
+        console.error("Cesium Viewer init failed:", e);
+        runtime.fallback("Viewer failed", e.message);
+        runtime.status("error", "Viewer: " + e.message);
+        throw e;
+      }
+
+      const CESIUM_IMAGERY = {
+        light: "https://basemaps.cartocdn.com/light_nolabels/",
+        dark: "https://basemaps.cartocdn.com/dark_nolabels/",
+        streets: "https://tile.openstreetmap.org/",
+        satellite: null,
+      };
+      let currentMapStyle = "light";
+
+      function swapImagery(styleKey) {
+        if (styleKey === currentMapStyle) return;
+        currentMapStyle = styleKey;
+        viewer.imageryLayers.removeAll();
+        if (styleKey === "satellite") {
+          viewer.imageryLayers.addImageryProvider(
+            new Cesium.IonImageryProvider({ assetId: 2 })
+          );
+        } else {
+          viewer.imageryLayers.addImageryProvider(
+            new Cesium.OpenStreetMapImageryProvider({
+              url: CESIUM_IMAGERY[styleKey] || CESIUM_IMAGERY.light,
+            })
+          );
+        }
+      }
+
+      viewer.scene.globe.depthTestAgainstTerrain = false;
+      viewer.scene.globe.enableLighting = true;
+      viewer.scene.setTerrain(Cesium.Terrain.fromWorldTerrain());
+      viewer.shadows = false;
+      viewer.shadowMap.size = 4096;
+      viewer.shadowMap.softShadows = true;
+      viewer.shadowMap.darkness = 0.15;
+      viewer.shadowMap.maximumDistance = 1500;
+      viewer.scene.fog.enabled = true;
+      viewer.scene.fog.density = 0.0003;
+      viewer.scene.skyAtmosphere.show = true;
+      viewer.scene.globe.showGroundAtmosphere = false;
+      viewer.scene.logarithmicDepthBuffer = true;
+      if (viewer.scene.postProcessStages?.fxaa) {
+        viewer.scene.postProcessStages.fxaa.enabled = true;
+      }
+      viewer.scene.msaaSamples = 4;
+      viewer.cesiumWidget.creditContainer.style.display = "none";
+      viewer.camera.frustum.fov = 0.6435;
+
+      function applyCameraLookAt(s, instant) {
+        const vh = document.getElementById("scene").clientHeight || 500;
+        const range = zoomToRangeMeters(s.zoom, s.center.lat, vh);
+        const target = Cesium.Cartesian3.fromDegrees(s.center.lng, s.center.lat, 0);
+        const hpr = new Cesium.HeadingPitchRange(
+          Cesium.Math.toRadians(s.bearing),
+          Cesium.Math.toRadians(s.pitch - 90),
+          range,
+        );
+        if (instant) {
+          viewer.camera.lookAt(target, hpr);
+          viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
+        } else {
+          viewer.camera.flyTo({
+            destination: Cesium.Cartesian3.fromDegrees(
+              s.center.lng, s.center.lat, range * Math.cos(Cesium.Math.toRadians(s.pitch))),
+            orientation: {
+              heading: Cesium.Math.toRadians(s.bearing),
+              pitch: Cesium.Math.toRadians(s.pitch - 90),
+              roll: 0,
+            },
+            duration: 0.9,
+          });
+        }
+      }
+      applyCameraLookAt({ ...runtime.settings, center: runtime.settings.center }, true);
+
+      try {
+        tileset = await Cesium.createOsmBuildingsAsync();
+      } catch (e) {
+        console.error("createOsmBuildingsAsync failed:", e);
+        runtime.fallback("OSM Buildings failed", e.message);
+        runtime.status("error", "OSM: " + e.message);
+        throw e;
+      }
+      tileset.shadows = Cesium.ShadowMode.ENABLED;
+      viewer.scene.primitives.add(tileset);
+
+      viewer.scene.light = new Cesium.DirectionalLight({
+        direction: new Cesium.Cartesian3(0.2, -0.5, -0.85),
+        intensity: 2.4,
+      });
+      viewer.scene.globe.baseColor = Cesium.Color.fromCssColorString("#c8c4be");
+
+      // Ambient fill so shadow-side faces aren't pitch black
+      if (tileset.imageBasedLighting) {
+        tileset.imageBasedLighting.imageBasedLightingFactor = new Cesium.Cartesian2(1.5, 1.5);
+      }
+
+      let latestSettings = runtime.settings;
+      await onSettings(latestSettings, true);
+
+      tileset.initialTilesLoaded.addEventListener(() => {
+        onSettings(latestSettings, true);
+      });
+
+      runtime.ready("Cesium ready");
+      runtime.reportMetrics();
+
+      async function onSettings(settings, instant) {
+        latestSettings = settings;
+
+        swapImagery(settings.mapStyle || "light");
+
+        // Lighting
+        viewer.scene.globe.enableLighting = settings.sun;
+        viewer.shadows = settings.sun;
+        if (settings.sun) {
+          viewer.shadowMap.darkness = settings.shadowDarkness ?? 0.15;
+          viewer.shadowMap.softShadows = true;
+          viewer.scene.light = new Cesium.SunLight({ intensity: settings.lightIntensity ?? 2.5 });
+        } else {
+          const angle = Cesium.Math.toRadians(settings.lightAngle ?? 210);
+          const alt = Cesium.Math.toRadians(settings.lightAltitude ?? 30);
+          viewer.scene.light = new Cesium.DirectionalLight({
+            direction: new Cesium.Cartesian3(
+              Math.sin(angle) * Math.cos(alt),
+              Math.cos(angle) * Math.cos(alt),
+              -Math.sin(alt),
+            ),
+            intensity: settings.lightIntensity ?? 2.4,
+          });
+        }
+
+        // Atmosphere
+        viewer.scene.fog.enabled = settings.fog !== false;
+        viewer.scene.fog.density = (settings.fogDensity ?? 0.3) * 0.001;
+        viewer.scene.skyAtmosphere.show = settings.sky !== false;
+        viewer.scene.skyAtmosphere.hueShift = settings.skyHueShift ?? 0;
+        viewer.scene.skyAtmosphere.saturationShift = settings.skySaturation ?? 0;
+        viewer.scene.skyAtmosphere.brightnessShift = settings.skyBrightness ?? 0;
+
+        // FXAA
+        if (viewer.scene.postProcessStages?.fxaa) {
+          viewer.scene.postProcessStages.fxaa.enabled = settings.fxaa !== false;
+        }
+
+        // Style
+        tileset.style = new Cesium.Cesium3DTileStyle({
+          color: `color('${settings.accentColor}', 1.0)`,
+        });
+
+        applyCameraLookAt(settings, instant);
+      }
+
+      function getCamera() {
+        const cartographic = Cesium.Cartographic.fromCartesian(viewer.camera.positionWC);
+        return {
+          lng: Cesium.Math.toDegrees(cartographic.longitude),
+          lat: Cesium.Math.toDegrees(cartographic.latitude),
+        };
+      }
+    </script>
+  </body>
+</html>

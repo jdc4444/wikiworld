@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>deck.gl</title>
+
+    <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+    <link href="/providers/provider.css" rel="stylesheet" />
+  </head>
+  <body>
+    <div id="scene"></div>
+    <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+    <script src="https://unpkg.com/deck.gl@9.1.14/dist.min.js"></script>
+    <script type="module">
+      import { attachOverlay, createProviderRuntime } from "/providers/common.js";
+
+      attachOverlay("deck.gl", "GeoJSON extrusion with deck.gl lighting, materials, and sun shadows.");
+
+      let deckOverlay = null;
+
+      const runtime = await createProviderRuntime({
+        providerId: "deckgl",
+        capabilities: ["Overlay", "GeoJSON extrusion", "Custom lighting", "Shadows"],
+        onSettings,
+        getCamera,
+      });
+
+      const map = new maplibregl.Map({
+        container: "scene",
+        style: "https://tiles.openfreemap.org/styles/positron",
+        center: [-73.98545, 40.75805],
+        zoom: 15.9,
+        pitch: 67,
+        bearing: 15,
+        antialias: true,
+        attributionControl: false,
+      });
+
+      const DECKGL_STYLES = {
+        light: "https://tiles.openfreemap.org/styles/positron",
+        dark: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
+        streets: "https://tiles.openfreemap.org/styles/liberty",
+        satellite: "https://tiles.openfreemap.org/styles/positron",
+      };
+      let currentMapStyle = "light";
+
+      const geojsonData = await fetch("/data/nyc-sample-buildings.geojson").then((r) => r.json());
+
+      function hexToRgb(hex) {
+        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+        return result ? [parseInt(result[1], 16), parseInt(result[2], 16), parseInt(result[3], 16)] : [255, 122, 24];
+      }
+
+      function lerpColor(rgb1, rgb2, t) {
+        return [
+          Math.round(rgb1[0] + (rgb2[0] - rgb1[0]) * t),
+          Math.round(rgb1[1] + (rgb2[1] - rgb1[1]) * t),
+          Math.round(rgb1[2] + (rgb2[2] - rgb1[2]) * t),
+        ];
+      }
+
+      function buildLightingEffect(settings) {
+        const effects = [];
+        if (deck.LightingEffect) {
+          const lights = {};
+          lights.ambient = new deck.AmbientLight({
+            color: [230, 220, 200],
+            intensity: (settings.materialAmbient ?? 0.28) * 3,
+          });
+          if (settings.sun && deck.SunLight) {
+            lights.sun = new deck.SunLight({
+              timestamp: Date.now(),
+              color: [255, 245, 225],
+              intensity: settings.lightIntensity ?? 2.0,
+              _shadow: true,
+            });
+          } else {
+            const angle = ((settings.lightAngle ?? 210) * Math.PI) / 180;
+            const alt = ((settings.lightAltitude ?? 30) * Math.PI) / 180;
+            lights.dir = new deck.DirectionalLight({
+              color: [255, 250, 240],
+              intensity: settings.lightIntensity ?? 1.4,
+              direction: [
+                -Math.sin(angle) * Math.cos(alt) * 10,
+                -Math.cos(angle) * Math.cos(alt) * 10,
+                -Math.sin(alt),
+              ],
+            });
+          }
+          effects.push(new deck.LightingEffect(lights));
+        }
+        return effects;
+      }
+
+      function buildLayers(settings) {
+        const rgb = hexToRgb(settings.accentColor);
+        const surfaceRgb = hexToRgb(settings.surfaceColor);
+        const alpha = Math.round((settings.opacity || 0.92) * 255);
+        const scale = settings.heightScale || 1;
+        const maxHeight = 541;
+
+        return [
+          new deck.GeoJsonLayer({
+            id: "buildings-fill",
+            data: geojsonData,
+            extruded: true,
+            wireframe: false,
+            _shadow: true,
+            getElevation: (f) => (f.properties.height || 50) * scale,
+            getFillColor: (f) => {
+              const h = f.properties.height || 50;
+              const t = Math.min(h / maxHeight, 1);
+              const c = lerpColor(rgb, [255, 220, 180], t * 0.3);
+              return [...c, alpha];
+            },
+            material: {
+              ambient: settings.materialAmbient ?? 0.28,
+              diffuse: settings.materialDiffuse ?? 0.72,
+              shininess: settings.materialShininess ?? 48,
+              specularColor: [220, 225, 240],
+            },
+            elevationScale: 1,
+            pickable: true,
+            autoHighlight: true,
+            highlightColor: [255, 255, 255, 80],
+            updateTriggers: {
+              getFillColor: [settings.accentColor, settings.opacity],
+              getElevation: [settings.heightScale],
+              material: [settings.materialAmbient, settings.materialDiffuse, settings.materialShininess],
+            },
+          }),
+          new deck.GeoJsonLayer({
+            id: "buildings-wireframe",
+            data: geojsonData,
+            extruded: true,
+            wireframe: true,
+            filled: false,
+            getElevation: (f) => (f.properties.height || 50) * scale,
+            getLineColor: [...surfaceRgb, 40],
+            getLineWidth: 0.4,
+            elevationScale: 1,
+            updateTriggers: {
+              getElevation: [settings.heightScale],
+            },
+          }),
+        ];
+      }
+
+      map.on("load", () => {
+        // Remove OpenFreeMap's default 3D building layer to avoid double rendering
+        if (map.getLayer("building-3d")) map.removeLayer("building-3d");
+
+        deckOverlay = new deck.MapboxOverlay({
+          interleaved: true,
+          layers: buildLayers(runtime.settings),
+          effects: buildLightingEffect(runtime.settings),
+        });
+        map.addControl(deckOverlay);
+
+        onSettings(runtime.settings);
+        runtime.ready("deck.gl ready");
+        runtime.reportMetrics();
+      });
+
+      async function onSettings(settings) {
+        // Swap base map style if changed
+        const wantStyle = settings.mapStyle || "light";
+        if (wantStyle !== currentMapStyle && DECKGL_STYLES[wantStyle]) {
+          currentMapStyle = wantStyle;
+          map.setStyle(DECKGL_STYLES[wantStyle]);
+        }
+
+        // Zoom offset to match Cesium/ArcGIS framing at the same settings
+        const ZOOM_OFFSET = -1.0;
+        map.easeTo({
+          center: [settings.center.lng, settings.center.lat],
+          zoom: settings.zoom + ZOOM_OFFSET,
+          pitch: settings.pitch,
+          bearing: settings.bearing,
+          duration: 800,
+        });
+
+        if (deckOverlay) {
+          deckOverlay.setProps({
+            layers: buildLayers(settings),
+            effects: buildLightingEffect(settings),
+          });
+        }
+      }
+
+      function getCamera() {
+        const center = map.getCenter();
+        return { lng: center.lng, lat: center.lat };
+      }
+    </script>
+  </body>
+</html>

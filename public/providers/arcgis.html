@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ArcGIS WebScene</title>
+
+    <link href="https://js.arcgis.com/4.34/esri/themes/dark/main.css" rel="stylesheet" />
+    <link href="/providers/provider.css" rel="stylesheet" />
+  </head>
+  <body>
+    <div id="scene"></div>
+    <script type="module">
+      import { attachOverlay, createProviderRuntime, zoomToRangeMeters } from "/providers/common.js";
+      import WebScene from "https://js.arcgis.com/4.34/@arcgis/core/WebScene.js";
+      import SceneView from "https://js.arcgis.com/4.34/@arcgis/core/views/SceneView.js";
+
+      attachOverlay("ArcGIS WebScene", "Public GIS-native scene using ArcGIS hosted 3D OSM layers.");
+
+      const runtime = await createProviderRuntime({
+        providerId: "arcgis",
+        capabilities: ["WebScene", "GIS-native", "Hosted OSM 3D"],
+        onSettings,
+        getCamera,
+      });
+
+      if (!document.createElement("canvas").getContext("webgl2")) {
+        runtime.fallback(
+          "WebGL2 unavailable",
+          "ArcGIS SceneView needs WebGL2. This panel will work in a normal modern browser with hardware acceleration, but headless environments often cannot render it.",
+        );
+        runtime.status("error", "WebGL2 unavailable");
+        throw new Error("WebGL2 unavailable");
+      }
+
+      let goToAbort = null;
+
+      const scene = new WebScene({
+        portalItem: {
+          id: "fa4dd90d0bfd470fb0dc9e32eab0bfef",
+        },
+      });
+
+      const view = new SceneView({
+        container: "scene",
+        map: scene,
+        qualityProfile: "high",
+        viewingMode: "global",
+        ui: {
+          components: [],
+        },
+        constraints: {
+          altitude: { min: 100, max: 50000 },
+        },
+      });
+
+      try {
+        await view.when();
+        await scene.when();
+        await applyRenderer(runtime.settings);
+        runtime.ready("ArcGIS ready");
+        runtime.reportMetrics();
+      } catch (error) {
+        runtime.fallback(
+          "ArcGIS failed to initialize",
+          error?.message || "This scene could not be initialized in the current browser environment.",
+        );
+        runtime.status("error", error?.message || "ArcGIS initialization failed");
+      }
+
+      async function onSettings(settings) {
+        await applyRenderer(settings);
+      }
+
+      async function applyRenderer(settings) {
+        const buildings = scene.allLayers.find((layer) => layer.title === "OpenStreetMap 3D Buildings");
+        if (buildings) {
+          buildings.opacity = settings.opacity;
+          buildings.renderer = {
+            type: "simple",
+            symbol: {
+              type: "mesh-3d",
+              symbolLayers: [
+                {
+                  type: "fill",
+                  material: {
+                    color: settings.accentColor,
+                    colorMixMode: "tint",
+                  },
+                  edges: settings.wireframe !== false ? {
+                    type: "solid",
+                    color: settings.surfaceColor,
+                    size: settings.edgeSize ?? 0.6,
+                  } : undefined,
+                },
+              ],
+            },
+          };
+        }
+
+        try {
+          if (view.environment.lighting) {
+            view.environment.lighting.directShadowsEnabled = settings.sun;
+            view.environment.lighting.ambientOcclusionEnabled = (settings.ambientOcclusion ?? 0.6) > 0;
+          }
+          view.environment.atmosphereEnabled = settings.sky !== false;
+          view.environment.starsEnabled = settings.stars !== false;
+
+          // Weather — wrap each in try/catch since some types may not be
+          // supported in all ArcGIS versions or WebScene configurations
+          const w = settings.weather || "none";
+          try {
+            if (w === "rainy") {
+              view.environment.weather = { type: "rainy", cloudCover: 0.7, precipitation: 0.5 };
+            } else if (w === "snowy") {
+              view.environment.weather = { type: "snowy", cloudCover: 0.8, precipitation: 0.6 };
+            } else if (w === "foggy") {
+              view.environment.weather = { type: "foggy", fogStrength: 0.3 };
+            } else {
+              view.environment.weather = { type: "sunny", cloudCover: 0 };
+            }
+          } catch (weatherErr) {
+            console.warn("ArcGIS weather failed:", weatherErr.message);
+            try { view.environment.weather = { type: "sunny", cloudCover: 0 }; } catch (_) {}
+          }
+        } catch (envErr) {
+          console.warn("ArcGIS environment settings skipped:", envErr.message);
+        }
+
+        // Cancel any in-flight animation before starting a new one
+        if (goToAbort) {
+          goToAbort.abort();
+        }
+        goToAbort = new AbortController();
+        try {
+          await view.goTo(
+            {
+              center: [settings.center.lng, settings.center.lat],
+              zoom: settings.zoom,
+              heading: settings.bearing,
+              tilt: settings.pitch,
+            },
+            { duration: 600, signal: goToAbort.signal },
+          );
+        } catch (e) {
+          // goTo was aborted by a newer call — safe to ignore
+        }
+      }
+
+      function getCamera() {
+        return {
+          lng: view.camera.position.longitude,
+          lat: view.camera.position.latitude,
+        };
+      }
+    </script>
+  </body>
+</html>

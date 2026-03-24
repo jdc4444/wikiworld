@@ -1,0 +1,97 @@
+html, body, #scene {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #f5f5f5;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+body {
+  position: relative;
+}
+
+.provider-overlay {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: 8px;
+  z-index: 10;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.provider-chip,
+.provider-note {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  color: #000;
+  backdrop-filter: blur(8px);
+}
+
+.provider-chip {
+  padding: 6px 10px;
+  max-width: 240px;
+}
+
+.provider-chip strong {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.provider-chip span {
+  font-size: 10px;
+  color: #666;
+}
+
+.provider-note {
+  padding: 6px 10px;
+  font-size: 10px;
+  color: #666;
+}
+
+/* Hide branded UI elements inside provider iframes */
+.mapboxgl-ctrl-logo,
+.mapboxgl-ctrl-attrib,
+.maplibregl-ctrl-logo,
+.maplibregl-ctrl-attrib,
+.cesium-viewer-fullscreenContainer,
+.cesium-viewer-toolbar,
+.cesium-credit-logoContainer,
+.cesium-credit-textContainer {
+  display: none !important;
+}
+
+.provider-fallback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: #f5f5f5;
+}
+
+.provider-fallback__card {
+  max-width: 320px;
+  padding: 24px;
+  border: 1px solid #000;
+  background: #fff;
+  color: #000;
+}
+
+.provider-fallback__card h1 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.provider-fallback__card p {
+  margin: 0;
+  font-size: 13px;
+  color: #666;
+  line-height: 1.5;
+}

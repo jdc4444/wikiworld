@@ -1,0 +1,9 @@
+{
+  "port": 4174,
+  "portPolicy": "strict",
+  "category": "app",
+  "entrypoint": "server.js",
+  "framework": "express",
+  "startCommand": "node",
+  "startArgs": ["server.js"]
+}

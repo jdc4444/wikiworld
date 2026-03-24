@@ -1,0 +1,20 @@
+{
+  "name": "nyc-3d-stack-tester",
+  "version": "1.0.0",
+  "description": "Compare NYC 3D city stacks side by side with shared camera presets, styling controls, and lightweight runtime metrics.",
+  "main": "server.js",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "atlas-obscura-api": "^5.0.3",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "puppeteer": "^24.40.0"
+  }
+}

@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Three.js</title>
+
+    <link href="/providers/provider.css" rel="stylesheet" />
+    <style>
+      #scene { width: 100%; height: 100%; overflow: hidden; }
+      canvas { display: block; }
+    </style>
+  </head>
+  <body>
+    <div id="scene"></div>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.170.0/build/three.module.js",
+          "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/"
+        }
+      }
+    </script>
+
+    <script type="module">
+      import * as THREE from "three";
+      import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+      import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+      import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+      import { SSAOPass } from "three/addons/postprocessing/SSAOPass.js";
+      import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+      import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+      import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
+      import { FXAAShader } from "three/addons/shaders/FXAAShader.js";
+      import { attachOverlay, createProviderRuntime } from "/providers/common.js";
+
+      attachOverlay("Three.js", "GeoJSON buildings in Three.js with PBR materials, SSAO, bloom, and ACES tone mapping.");
+
+      const runtime = await createProviderRuntime({
+        providerId: "threejs",
+        capabilities: ["PBR", "SSAO", "Bloom", "Tone mapping", "EffectComposer"],
+        onSettings,
+        getCamera,
+      });
+
+      /* ── Scene Setup ───────────────────────────────────────────────── */
+
+      const container = document.getElementById("scene");
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0xdde4ed);
+
+      // Camera — match shared FOV
+      const FOV_DEG = 36.87; // 0.6435 rad, matches MapLibre/Cesium
+      const camera = new THREE.PerspectiveCamera(FOV_DEG, width / height, 1, 50000);
+
+      // Renderer
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(width, height);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.4;
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      container.appendChild(renderer.domElement);
+
+      // Controls
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.08;
+      controls.minDistance = 100;
+      controls.maxDistance = 20000;
+      controls.maxPolarAngle = Math.PI * 0.48;
+
+      /* ── Lighting ──────────────────────────────────────────────────── */
+
+      const hemiLight = new THREE.HemisphereLight(0xb1c8e8, 0x8a8078, 0.9);
+      scene.add(hemiLight);
+
+      const dirLight = new THREE.DirectionalLight(0xfff5e0, 1.8);
+      dirLight.position.set(200, 500, -350);
+      dirLight.castShadow = true;
+      dirLight.shadow.mapSize.width = 4096;
+      dirLight.shadow.mapSize.height = 4096;
+      dirLight.shadow.camera.near = 1;
+      dirLight.shadow.camera.far = 5000;
+      dirLight.shadow.camera.left = -2000;
+      dirLight.shadow.camera.right = 2000;
+      dirLight.shadow.camera.top = 2000;
+      dirLight.shadow.camera.bottom = -2000;
+      dirLight.shadow.bias = -0.0003;
+      dirLight.shadow.normalBias = 0.5;
+      scene.add(dirLight);
+
+      const ambLight = new THREE.AmbientLight(0xe6dcc8, 0.35);
+      scene.add(ambLight);
+
+      /* ── Ground Plane ──────────────────────────────────────────────── */
+
+      const groundGeo = new THREE.PlaneGeometry(10000, 10000);
+      const groundMat = new THREE.MeshStandardMaterial({
+        color: 0xd8d4ce,
+        roughness: 0.95,
+        metalness: 0.0,
+      });
+      const ground = new THREE.Mesh(groundGeo, groundMat);
+      ground.rotation.x = -Math.PI / 2;
+      ground.position.y = -0.5;
+      ground.receiveShadow = true;
+      scene.add(ground);
+
+      /* ── Post-Processing ───────────────────────────────────────────── */
+
+      const composer = new EffectComposer(renderer);
+
+      const renderPass = new RenderPass(scene, camera);
+      composer.addPass(renderPass);
+
+      const ssaoPass = new SSAOPass(scene, camera, width, height);
+      ssaoPass.kernelRadius = 12;
+      ssaoPass.minDistance = 0.001;
+      ssaoPass.maxDistance = 0.15;
+      ssaoPass.output = SSAOPass.OUTPUT.Default;
+      composer.addPass(ssaoPass);
+
+      const bloomPass = new UnrealBloomPass(
+        new THREE.Vector2(width, height),
+        0.15,  // strength — very subtle
+        0.6,   // radius
+        0.85   // threshold
+      );
+      composer.addPass(bloomPass);
+
+      const fxaaPass = new ShaderPass(FXAAShader);
+      fxaaPass.uniforms["resolution"].value.set(1 / width, 1 / height);
+      composer.addPass(fxaaPass);
+
+      const outputPass = new OutputPass();
+      composer.addPass(outputPass);
+
+      /* ── GeoJSON Loading ───────────────────────────────────────────── */
+
+      // NYC reference point for local coordinate system
+      const REF_LNG = -73.98545;
+      const REF_LAT = 40.75805;
+      const METERS_PER_DEG_LNG = Math.cos(REF_LAT * Math.PI / 180) * 111320;
+      const METERS_PER_DEG_LAT = 111320;
+
+      function lngLatToLocal(lng, lat) {
+        return [
+          (lng - REF_LNG) * METERS_PER_DEG_LNG,
+          (lat - REF_LAT) * METERS_PER_DEG_LAT,
+        ];
+      }
+
+      function hexToThreeColor(hex) {
+        return new THREE.Color(hex);
+      }
+
+      let buildingGroup = new THREE.Group();
+      scene.add(buildingGroup);
+
+      const geojsonData = await fetch("/data/nyc-sample-buildings.geojson").then(r => r.json());
+
+      function buildBuildings(settings) {
+        // Remove old buildings
+        buildingGroup.clear();
+
+        const accentColor = hexToThreeColor(settings.accentColor);
+        const surfaceColor = hexToThreeColor(settings.surfaceColor);
+        const opacity = settings.opacity ?? 0.92;
+        const heightScale = settings.heightScale ?? 1;
+
+        const features = geojsonData.features || [];
+
+        for (const feature of features) {
+          const geom = feature.geometry;
+          const props = feature.properties || {};
+          const h = (props.height || 50) * heightScale;
+
+          if (!geom || geom.type !== "Polygon") continue;
+
+          const coords = geom.coordinates[0]; // outer ring
+          if (!coords || coords.length < 3) continue;
+
+          // Create shape from polygon coordinates
+          const shape = new THREE.Shape();
+          for (let i = 0; i < coords.length; i++) {
+            const [x, z] = lngLatToLocal(coords[i][0], coords[i][1]);
+            if (i === 0) shape.moveTo(x, z);
+            else shape.lineTo(x, z);
+          }
+
+          const extrudeSettings = {
+            depth: h,
+            bevelEnabled: false,
+          };
+
+          const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+          // Rotate so extrusion goes up (Y axis)
+          geometry.rotateX(-Math.PI / 2);
+
+          // Height-based color — lerp toward warm for tall buildings
+          const t = Math.min(h / 541, 1);
+          const buildingColor = accentColor.clone().lerp(new THREE.Color(0xffd8b0), t * 0.3);
+
+          const material = new THREE.MeshStandardMaterial({
+            color: buildingColor,
+            roughness: 0.72,
+            metalness: 0.08,
+            transparent: opacity < 1,
+            opacity: opacity,
+            envMapIntensity: 0.4,
+          });
+
+          const mesh = new THREE.Mesh(geometry, material);
+          mesh.castShadow = true;
+          mesh.receiveShadow = true;
+          buildingGroup.add(mesh);
+        }
+      }
+
+      buildBuildings(runtime.settings);
+
+      /* ── Camera Positioning ────────────────────────────────────────── */
+
+      function positionCamera(settings) {
+        const center = settings.center || { lng: REF_LNG, lat: REF_LAT };
+        const [cx, cz] = lngLatToLocal(center.lng, center.lat);
+
+        // Convert zoom/pitch/bearing to Three.js camera position
+        // Use a simpler approach: pitch=tilt from horizontal, bearing=rotation around Y
+        const pitchRad = (settings.pitch || 67) * Math.PI / 180;
+        const bearingRad = (settings.bearing || 15) * Math.PI / 180;
+
+        // Distance from target based on zoom level
+        // zoom 16 ≈ 800m, zoom 15 ≈ 1600m
+        const baseDist = 40075017 * Math.cos(REF_LAT * Math.PI / 180) / (512 * Math.pow(2, settings.zoom || 15.9));
+        const vh = container.clientHeight || 500;
+        const cameraDist = (vh / 2) / Math.tan(0.6435 / 2);
+        const distance = cameraDist * baseDist * 2.0;
+
+        // Spherical to cartesian
+        const elevAngle = Math.PI / 2 - pitchRad; // pitch 67° → 23° from horizontal
+        const camY = Math.sin(elevAngle) * distance + 50;
+        const horizDist = Math.cos(elevAngle) * distance;
+        const camX = cx - Math.sin(bearingRad) * horizDist;
+        const camZ = cz - Math.cos(bearingRad) * horizDist;
+
+        camera.position.set(camX, camY, camZ);
+        controls.target.set(cx, 80, cz); // look at ~80m height (midrise level)
+        controls.update();
+      }
+
+      positionCamera(runtime.settings);
+
+      /* ── Settings Handler ──────────────────────────────────────────── */
+
+      async function onSettings(settings) {
+        // Rebuild buildings with new colors/opacity
+        buildBuildings(settings);
+
+        // Update lighting
+        const intensity = settings.lightIntensity ?? 1.8;
+        dirLight.intensity = intensity;
+        hemiLight.intensity = intensity * 0.5;
+
+        if (!settings.sun) {
+          const angle = ((settings.lightAngle ?? 210) * Math.PI) / 180;
+          const alt = ((settings.lightAltitude ?? 30) * Math.PI) / 180;
+          dirLight.position.set(
+            Math.sin(angle) * Math.cos(alt) * 1000,
+            Math.sin(alt) * 1000,
+            Math.cos(angle) * Math.cos(alt) * 1000
+          );
+        }
+
+        dirLight.castShadow = settings.sun !== false;
+
+        // Post-processing
+        ssaoPass.enabled = settings.ssao !== false;
+        if (settings.ssaoRadius) ssaoPass.kernelRadius = settings.ssaoRadius;
+        if (settings.ssaoIntensity !== undefined) {
+          ssaoPass.minDistance = 0.001 * (1.0 / Math.max(settings.ssaoIntensity, 0.1));
+        }
+
+        bloomPass.enabled = settings.bloom === true;
+        bloomPass.strength = settings.bloomIntensity ?? 0.15;
+
+        renderer.toneMappingExposure = settings.tonemapExposure ?? 1.4;
+
+        // Fog
+        if (settings.fog !== false) {
+          const fogDensity = (settings.fogDensity ?? 0.3) * 0.0001;
+          scene.fog = new THREE.FogExp2(0xdde4ed, fogDensity);
+        } else {
+          scene.fog = null;
+        }
+
+        // Background
+        const bgColor = (settings.mapStyle === "dark") ? 0x1a1a2e : 0xdde4ed;
+        scene.background = new THREE.Color(bgColor);
+        ground.material.color.set((settings.mapStyle === "dark") ? 0x2a2a3e : 0xd8d4ce);
+
+        positionCamera(settings);
+      }
+
+      function getCamera() {
+        // Convert back to lng/lat from local coords
+        const pos = controls.target;
+        return {
+          lng: REF_LNG + pos.x / METERS_PER_DEG_LNG,
+          lat: REF_LAT + pos.z / METERS_PER_DEG_LAT,
+        };
+      }
+
+      /* ── Render Loop ───────────────────────────────────────────────── */
+
+      function animate() {
+        requestAnimationFrame(animate);
+        controls.update();
+        composer.render();
+      }
+      animate();
+
+      /* ── Resize ────────────────────────────────────────────────────── */
+
+      window.addEventListener("resize", () => {
+        const w = container.clientWidth;
+        const h = container.clientHeight;
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+        renderer.setSize(w, h);
+        composer.setSize(w, h);
+        ssaoPass.setSize(w, h);
+        fxaaPass.uniforms["resolution"].value.set(1 / w, 1 / h);
+      });
+
+      runtime.ready("Three.js ready");
+      runtime.reportMetrics();
+    </script>
+  </body>
+</html>

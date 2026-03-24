@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Apple MapKit JS</title>
+    <link href="/providers/provider.css" rel="stylesheet" />
+  </head>
+  <body>
+    <div id="scene"></div>
+    <script type="module">
+      import { attachOverlay, createProviderRuntime } from "/providers/common.js";
+
+      attachOverlay("Apple MapKit JS", "Apple's vector map with native 3D buildings. No building styling control.");
+
+      const runtime = await createProviderRuntime({
+        providerId: "apple-mapkit",
+        capabilities: ["Apple ecosystem", "Native 3D", "No building styling"],
+        onSettings,
+        getCamera,
+      });
+
+      const token = runtime.config.env.appleMapKitToken || "";
+      if (!token) {
+        runtime.fallback(
+          "Apple MapKit JWT missing",
+          "Add APPLE_MAPKIT_TOKEN to .env (a signed JWT from your Apple Developer account) to enable the Apple Maps comparison panel. Requires Apple Developer membership ($99/yr).",
+        );
+        runtime.status("error", "Missing JWT token");
+        throw new Error("No Apple MapKit JWT");
+      }
+
+      // Load MapKit JS
+      const script = document.createElement("script");
+      script.src = "https://cdn.apple-mapkit.com/mk/5.x.x/mapkit.js";
+      script.crossOrigin = "anonymous";
+      document.head.appendChild(script);
+
+      await new Promise((resolve, reject) => {
+        script.onload = resolve;
+        script.onerror = () => reject(new Error("Failed to load MapKit JS"));
+      });
+
+      mapkit.init({
+        authorizationCallback: (done) => done(token),
+      });
+
+      const map = new mapkit.Map("scene", {
+        mapType: mapkit.Map.MapTypes.Standard,
+        center: new mapkit.Coordinate(40.75805, -73.98545),
+        cameraDistance: 1500,
+        rotation: 15,
+        isRotationEnabled: true,
+        isZoomEnabled: true,
+        showsCompass: mapkit.FeatureVisibility.Hidden,
+        showsMapTypeControl: false,
+        showsZoomControl: false,
+        showsScale: mapkit.FeatureVisibility.Hidden,
+        colorScheme: mapkit.Map.ColorSchemes.Light,
+      });
+
+      runtime.ready("Apple Maps ready");
+      runtime.reportMetrics();
+
+      async function onSettings(settings) {
+        // MapKit JS: rotation and cameraDistance are settable, but pitch is NOT programmatic
+        map.setCenterAnimated(
+          new mapkit.Coordinate(settings.center.lat, settings.center.lng),
+          true,
+        );
+        map.setRotationAnimated(settings.bearing, true);
+
+        // Approximate zoom → cameraDistance conversion
+        const distance = 2200 * Math.pow(2, 16 - settings.zoom);
+        map.setCameraDistanceAnimated(Math.max(200, distance), true);
+      }
+
+      function getCamera() {
+        return {
+          lng: map.center.longitude,
+          lat: map.center.latitude,
+        };
+      }
+    </script>
+  </body>
+</html>

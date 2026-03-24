@@ -1,0 +1,815 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WikiWorld — ArcGIS</title>
+    <link href="https://js.arcgis.com/4.34/esri/themes/light/main.css" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/iconify-icon@3.0.2/dist/iconify-icon.min.js"></script>
+    <style>
+      :root {
+        --black: #000;
+        --white: #fff;
+        --gray-200: #e5e5e5;
+        --gray-600: #666;
+        --rule: 1px solid var(--black);
+        --font: "Helvetica Neue", Helvetica, Arial, sans-serif;
+      }
+
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; background: var(--white) !important; color: var(--black) !important; font-family: var(--font); font-size: 14px; -webkit-font-smoothing: antialiased; }
+      .esri-view { background: transparent !important; }
+      .esri-attribution { display: none !important; }
+      .esri-ui { pointer-events: none !important; }
+
+      /* ─── Full-screen map + bottom bar ─── */
+      .app-shell {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+      }
+
+      .map-area {
+        position: relative;
+        flex: 1;
+        min-height: 0;
+        overflow: hidden;
+      }
+
+      #scene { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+      .map-loading {
+        display: none; position: absolute; top: 12px; right: 12px;
+        background: var(--white); border: 1px solid var(--gray-200); border-radius: 6px;
+        padding: 8px 16px; font-size: 12px; font-weight: 600; z-index: 10;
+      }
+      .map-loading.active { display: block; }
+
+      /* ─── Bottom bar ─── */
+      .bottom-bar {
+        border-top: 1px solid var(--gray-200);
+        background: var(--white);
+        padding: 8px 12px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        z-index: 100;
+      }
+
+      .bottom-bar .input-row {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        border: 1px solid var(--gray-200);
+        border-radius: 6px;
+        padding: 6px 10px;
+        background: var(--white);
+        min-width: 0;
+      }
+      .bottom-bar .input-row:focus-within { border-color: var(--black); }
+
+      .bottom-bar .input-row input {
+        flex: 1;
+        border: none;
+        outline: none;
+        font-size: 14px;
+        font-family: var(--font);
+        background: transparent;
+        min-width: 0;
+      }
+      .bottom-bar .input-row input::placeholder { color: #aaa; }
+
+      .bottom-bar .btn-send {
+        background: var(--black);
+        color: var(--white);
+        border: none;
+        border-radius: 4px;
+        padding: 5px 12px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+
+      .bar-icon-wrap {
+        position: relative;
+        flex-shrink: 0;
+      }
+
+      .bar-icon {
+        background: none;
+        border: none;
+        color: #666;
+        cursor: pointer;
+        padding: 6px;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+      }
+      .bar-icon:hover { color: var(--black); background: #f0f0f0; }
+      .bar-icon.active { color: var(--black); }
+
+      /* ─── Popover panels (from bottom bar icons) ─── */
+      .popover {
+        position: absolute;
+        bottom: calc(100% + 12px);
+        right: 0;
+        background: var(--white);
+        border: 1px solid var(--gray-200);
+        border-radius: 8px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+        padding: 12px 14px;
+        min-width: 180px;
+        display: none;
+        z-index: 200;
+      }
+      .popover.open { display: block; }
+      .popover h3 {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        color: #999;
+        margin: 0 0 8px;
+      }
+
+      .style-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+      .style-btn {
+        padding: 6px 8px; border: 1px solid var(--gray-200); border-radius: 4px;
+        background: var(--white); font-size: 11px; font-weight: 600;
+        cursor: pointer; text-align: center;
+      }
+      .style-btn.active { background: var(--black); color: var(--white); border-color: var(--black); }
+
+      .field { display: flex; flex-direction: column; gap: 3px; margin: 0 0 8px; }
+      .field span { font-size: 11px; display: flex; justify-content: space-between; color: #666; }
+      .field input[type="range"] { width: 100%; }
+
+      .toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
+
+      .color-swatch {
+        width: 22px; height: 22px;
+        border-radius: 50%;
+        border: 2px solid transparent;
+        cursor: pointer;
+        padding: 0;
+      }
+      .color-swatch:hover { border-color: #999; }
+      .color-swatch.active { border-color: #000; box-shadow: 0 0 0 1px #fff inset; }
+
+      /* ─── Article overlay ─── */
+      .article-overlay {
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 48px; /* above bottom bar */
+        left: 0;
+        z-index: 9999;
+        overflow: hidden;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+        padding: 24px 32px;
+      }
+      .article-overlay.open {
+        opacity: 1;
+        pointer-events: auto;
+      }
+      .article-overlay .article-close {
+        position: absolute;
+        top: 20px;
+        right: 24px;
+        background: none;
+        color: #000;
+        border: 1px solid var(--gray-200);
+        border-radius: 4px;
+        padding: 4px 12px;
+        font-size: 13px;
+        cursor: pointer;
+        z-index: 25;
+      }
+      .article-overlay .article-close:hover { background: #f0f0f0; }
+      .article-overlay .article-title {
+        font-size: 42px;
+        font-weight: 900;
+        letter-spacing: -1.5px;
+        line-height: 1.0;
+        color: #000;
+        margin-bottom: 4px;
+      }
+      .article-overlay .article-meta {
+        font-size: 11px;
+        color: #999;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        margin-bottom: 14px;
+      }
+      .article-overlay .article-body {
+        font-family: "Georgia", "Times New Roman", "Times", serif;
+        font-size: 26px;
+        font-weight: 400;
+        line-height: 1.4;
+        color: #000;
+        column-count: 1;
+        max-height: calc(100% - 100px);
+        overflow: hidden;
+      }
+      .article-overlay .article-body p { margin-bottom: 0.7em; break-inside: avoid; }
+      .article-overlay .article-body a { color: #000; text-decoration: underline; text-underline-offset: 2px; }
+      .article-overlay .article-thumb { display: none; }
+    </style>
+  </head>
+  <body>
+    <div class="app-shell">
+      <div class="map-area">
+        <div id="scene"></div>
+        <div class="map-loading" id="map-loading">Searching…</div>
+      </div>
+
+      <div class="bottom-bar">
+        <!-- Search input (primary) -->
+        <div class="input-row">
+          <iconify-icon icon="lucide:search" width="16" style="color:#999;flex-shrink:0"></iconify-icon>
+          <input id="wiki-input" type="text" placeholder="Search Wikipedia — e.g. Colosseum, Tokyo Tower…" autocomplete="off" spellcheck="false" />
+          <button class="btn-send" id="wiki-go">Go</button>
+        </div>
+
+        <div style="width:1px;height:20px;background:#ddd;flex-shrink:0"></div>
+
+        <!-- Map style -->
+        <div class="bar-icon-wrap">
+          <div class="bar-icon" id="style-icon" title="Map Style">
+            <iconify-icon icon="lucide:layers" width="18"></iconify-icon>
+          </div>
+          <div class="popover" id="style-popover">
+            <h3>Map Style</h3>
+            <div class="style-grid">
+              <button class="style-btn active" data-style="light">Light</button>
+              <button class="style-btn" data-style="dark">Dark</button>
+              <button class="style-btn" data-style="streets">Streets</button>
+              <button class="style-btn" data-style="satellite">Satellite</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- View controls -->
+        <div class="bar-icon-wrap">
+          <div class="bar-icon" id="view-icon" title="View Controls">
+            <iconify-icon icon="lucide:sliders-horizontal" width="18"></iconify-icon>
+          </div>
+          <div class="popover" id="view-popover" style="min-width:220px">
+            <h3>View</h3>
+            <label class="field">
+              <span>Zoom <strong id="zoom-value">18</strong></span>
+              <input id="zoom-range" type="range" min="1" max="22" step="1" value="18" />
+            </label>
+            <label class="field">
+              <span>Pitch <strong id="pitch-value">55°</strong></span>
+              <input id="pitch-range" type="range" min="0" max="80" step="1" value="55" />
+            </label>
+            <label class="field">
+              <span>Bearing <strong id="bearing-value">15°</strong></span>
+              <input id="bearing-range" type="range" min="0" max="359" step="1" value="15" />
+            </label>
+            <label class="toggle">
+              <input id="buildings-toggle" type="checkbox" checked />
+              <span>3D Buildings</span>
+            </label>
+            <label class="toggle" style="margin-top:6px">
+              <input id="shadows-toggle" type="checkbox" checked />
+              <span>Shadows</span>
+            </label>
+            <label class="field" style="margin-top:8px">
+              <span>Time of Day <strong id="tod-value">12:00</strong></span>
+              <input id="tod-range" type="range" min="0" max="23.75" step="0.25" value="12" />
+            </label>
+          </div>
+        </div>
+
+        <!-- Buildings toggle shortcut -->
+        <div class="bar-icon" id="buildings-icon" title="Toggle 3D Buildings">
+          <iconify-icon icon="lucide:building-2" width="18"></iconify-icon>
+        </div>
+
+        <!-- Typography controls -->
+        <div class="bar-icon-wrap">
+          <div class="bar-icon" id="type-icon" title="Typography">
+            <iconify-icon icon="lucide:type" width="18"></iconify-icon>
+          </div>
+          <div class="popover" id="type-popover" style="min-width:220px">
+            <h3>Typography</h3>
+            <label class="field">
+              <span>Font Size <strong id="fontsize-value">26px</strong></span>
+              <input id="fontsize-range" type="range" min="14" max="48" step="1" value="26" />
+            </label>
+            <label class="field">
+              <span>Font</span>
+              <select id="font-select" style="padding:4px 6px;border:1px solid #ddd;border-radius:4px;font-size:12px;width:100%">
+                <option value="Georgia, serif" selected>Georgia (Serif)</option>
+                <option value="'Times New Roman', serif">Times New Roman</option>
+                <option value="'Helvetica Neue', sans-serif">Helvetica</option>
+                <option value="system-ui, sans-serif">System UI</option>
+                <option value="'SF Mono', monospace">Monospace</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Color</span>
+              <div style="display:flex;gap:4px;flex-wrap:wrap">
+                <button class="color-swatch active" data-color="#000" style="background:#000" title="Black"></button>
+                <button class="color-swatch" data-color="#fff" style="background:#fff" title="White"></button>
+                <button class="color-swatch" data-color="#e63946" style="background:#e63946" title="Red"></button>
+                <button class="color-swatch" data-color="#1d3557" style="background:#1d3557" title="Navy"></button>
+                <button class="color-swatch" data-color="#457b9d" style="background:#457b9d" title="Steel"></button>
+                <button class="color-swatch" data-color="#2a9d8f" style="background:#2a9d8f" title="Teal"></button>
+                <button class="color-swatch" data-color="#e9c46a" style="background:#e9c46a" title="Gold"></button>
+                <button class="color-swatch" data-color="#666" style="background:#666" title="Gray"></button>
+              </div>
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="article-overlay" id="article-overlay">
+      <button class="article-close" id="article-close">×</button>
+      <div class="article-title" id="article-title"></div>
+      <div class="article-meta" id="article-meta"></div>
+      <div class="article-body" id="article-body"></div>
+    </div>
+
+    <script type="module">
+      import WebScene from "https://js.arcgis.com/4.34/@arcgis/core/WebScene.js";
+      import SceneView from "https://js.arcgis.com/4.34/@arcgis/core/views/SceneView.js";
+
+      // ─── Camera persistence ────────────────────────────────────
+      const CAMERA_KEY = "wikiworld-arcgis-camera";
+      function loadCamera() {
+        try { return JSON.parse(localStorage.getItem(CAMERA_KEY)); } catch { return null; }
+      }
+      function saveCamera() {
+        const cam = view.camera;
+        localStorage.setItem(CAMERA_KEY, JSON.stringify({
+          lng: cam.position.longitude, lat: cam.position.latitude,
+          z: cam.position.z, heading: cam.heading, tilt: cam.tilt,
+        }));
+      }
+      const saved = loadCamera();
+
+      // ─── ArcGIS Scene ──────────────────────────────────────────
+      const scene = new WebScene({
+        portalItem: { id: "fa4dd90d0bfd470fb0dc9e32eab0bfef" },
+      });
+
+      const view = new SceneView({
+        container: "scene",
+        map: scene,
+        qualityProfile: "high",
+        viewingMode: "global",
+        ui: { components: [] },
+        camera: {
+          position: {
+            longitude: saved?.lng ?? -73.98545,
+            latitude: saved?.lat ?? 40.75805,
+            z: saved?.z ?? 400,
+          },
+          heading: saved?.heading ?? 15,
+          tilt: saved?.tilt ?? 55,
+        },
+      });
+
+      await view.when();
+      await scene.when();
+
+      // Set lighting to current local time so shadows match reality
+      // Red highlight instead of default cyan
+      view.highlightOptions = {
+        color: [230, 57, 70],
+        haloColor: [230, 57, 70],
+        haloOpacity: 0.9,
+        fillOpacity: 0.35,
+      };
+
+      // Force daytime lighting — set to noon UTC today
+      // ArcGIS uses UTC for sun position calculation
+      const noon = new Date();
+      noon.setUTCHours(18, 0, 0, 0); // 18:00 UTC = ~1pm EST / ~10am PST
+      view.environment = {
+        lighting: {
+          type: "sun",
+          date: noon,
+          directShadowsEnabled: true,
+          ambientOcclusionEnabled: true,
+          cameraTrackingEnabled: true,
+        },
+        atmosphere: { quality: "high" },
+      };
+
+      view.watch("camera", saveCamera);
+
+      const buildingsLayer = scene.allLayers.find(l => l.title === "OpenStreetMap 3D Buildings");
+
+      // Disable native popup on buildings layer
+      if (buildingsLayer) {
+        buildingsLayer.popupEnabled = false;
+      }
+      view.popup.autoOpenEnabled = false;
+
+      // ─── Building highlight on search ──────────────────────────
+      let activeHighlight = null;
+
+      async function highlightBuildingAtLocation(lat, lng) {
+        // Remove previous highlight
+        if (activeHighlight) {
+          activeHighlight.remove();
+          activeHighlight = null;
+        }
+        if (!buildingsLayer) return;
+
+        // Wait for layer view
+        const layerView = await view.whenLayerView(buildingsLayer);
+
+        // Query buildings near the search target
+        const point = {
+          type: "point",
+          longitude: lng,
+          latitude: lat,
+          spatialReference: { wkid: 4326 },
+        };
+
+        try {
+          const query = buildingsLayer.createQuery();
+          query.geometry = point;
+          query.distance = 50; // meters
+          query.units = "meters";
+          query.returnGeometry = false;
+          query.outFields = ["*"];
+
+          const result = await buildingsLayer.queryFeatures(query);
+          if (result.features.length > 0) {
+            activeHighlight = layerView.highlight(result.features);
+          }
+        } catch (e) {
+          console.warn("Building highlight query failed:", e);
+        }
+      }
+
+      // ─── UI refs ───────────────────────────────────────────────
+      const loadingEl = document.getElementById("map-loading");
+      const searchInput = document.getElementById("wiki-input");
+      const searchBtn = document.getElementById("wiki-go");
+      const zoomRange = document.getElementById("zoom-range");
+      const zoomValue = document.getElementById("zoom-value");
+      const pitchRange = document.getElementById("pitch-range");
+      const pitchValue = document.getElementById("pitch-value");
+      const bearingRange = document.getElementById("bearing-range");
+      const bearingValue = document.getElementById("bearing-value");
+      const buildingsToggle = document.getElementById("buildings-toggle");
+
+      // ─── Popover toggles ──────────────────────────────────────
+      const styleIcon = document.getElementById("style-icon");
+      const stylePopover = document.getElementById("style-popover");
+      const viewIcon = document.getElementById("view-icon");
+      const viewPopover = document.getElementById("view-popover");
+      const typeIcon = document.getElementById("type-icon");
+      const typePopover = document.getElementById("type-popover");
+
+      const allPopovers = [
+        [stylePopover, styleIcon],
+        [viewPopover, viewIcon],
+        [typePopover, typeIcon],
+      ];
+
+      function closeAllPopovers() {
+        for (const [pop, icon] of allPopovers) {
+          pop.classList.remove("open");
+          icon.classList.remove("active");
+        }
+      }
+
+      function togglePopover(popover, icon) {
+        return (e) => {
+          e.stopPropagation();
+          const wasOpen = popover.classList.contains("open");
+          closeAllPopovers();
+          if (!wasOpen) { popover.classList.add("open"); icon.classList.add("active"); }
+        };
+      }
+
+      styleIcon.addEventListener("click", togglePopover(stylePopover, styleIcon));
+      viewIcon.addEventListener("click", togglePopover(viewPopover, viewIcon));
+      typeIcon.addEventListener("click", togglePopover(typePopover, typeIcon));
+
+      document.addEventListener("click", (e) => {
+        if (!e.target.closest(".popover") && !e.target.closest(".bar-icon") && !e.target.closest(".bar-icon-wrap")) closeAllPopovers();
+      });
+      for (const [pop] of allPopovers) pop.addEventListener("click", (e) => e.stopPropagation());
+
+      // Buildings quick-toggle
+      const buildingsIcon = document.getElementById("buildings-icon");
+      buildingsIcon.addEventListener("click", () => {
+        buildingsToggle.checked = !buildingsToggle.checked;
+        if (buildingsLayer) buildingsLayer.visible = buildingsToggle.checked;
+        buildingsIcon.classList.toggle("active", buildingsToggle.checked);
+      });
+      buildingsIcon.classList.add("active"); // starts on
+
+      // ─── Lighting controls ─────────────────────────────────────
+      const todRange = document.getElementById("tod-range");
+      const todValue = document.getElementById("tod-value");
+      const shadowsToggle = document.getElementById("shadows-toggle");
+
+      function formatTime(h) {
+        const hr = Math.floor(h);
+        const min = Math.round((h - hr) * 60);
+        const ampm = hr >= 12 ? "PM" : "AM";
+        const h12 = hr === 0 ? 12 : hr > 12 ? hr - 12 : hr;
+        return `${h12}:${min.toString().padStart(2, "0")} ${ampm}`;
+      }
+
+      function updateLighting() {
+        const h = +todRange.value;
+        todValue.textContent = formatTime(h);
+        const d = new Date();
+        d.setUTCHours(Math.floor(h) + 5, Math.round((h % 1) * 60), 0, 0); // +5 = rough EST→UTC
+        view.environment.lighting.date = d;
+        view.environment.lighting.directShadowsEnabled = shadowsToggle.checked;
+      }
+
+      todRange.addEventListener("input", updateLighting);
+      shadowsToggle.addEventListener("change", updateLighting);
+
+      // ─── Typography controls ───────────────────────────────────
+      const fontsizeRange = document.getElementById("fontsize-range");
+      const fontsizeValue = document.getElementById("fontsize-value");
+      const fontSelect = document.getElementById("font-select");
+      let textColor = "#000";
+
+      function applyTypography() {
+        const body = document.getElementById("article-body");
+        const title = document.getElementById("article-title");
+        body.style.fontSize = fontsizeRange.value + "px";
+        body.style.fontFamily = fontSelect.value;
+        body.style.color = textColor;
+        title.style.color = textColor;
+      }
+
+      fontsizeRange.addEventListener("input", () => {
+        fontsizeValue.textContent = fontsizeRange.value + "px";
+        applyTypography();
+      });
+      fontSelect.addEventListener("change", applyTypography);
+
+      document.querySelectorAll(".color-swatch").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          textColor = btn.dataset.color;
+          document.querySelectorAll(".color-swatch").forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+          applyTypography();
+        });
+      });
+
+      // ─── Map style ────────────────────────────────────────────
+      let currentStyle = "light";
+      document.querySelectorAll(".style-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const style = btn.dataset.style;
+          if (style === currentStyle) return;
+          currentStyle = style;
+          document.querySelectorAll(".style-btn").forEach(b => b.classList.toggle("active", b === btn));
+
+          const basemaps = {
+            light: "topo-vector",
+            dark: "dark-gray-vector",
+            streets: "streets-navigation-vector",
+            satellite: "satellite",
+          };
+          view.map.basemap = basemaps[style] || "topo-vector";
+        });
+      });
+
+      // ─── View controls ────────────────────────────────────────
+      zoomRange.addEventListener("input", () => {
+        const val = +zoomRange.value;
+        zoomValue.textContent = val;
+        view.goTo({ zoom: val }, { duration: 300 });
+      });
+
+      pitchRange.addEventListener("input", () => {
+        const val = +pitchRange.value;
+        pitchValue.textContent = val + "°";
+        view.goTo({ tilt: val }, { duration: 300 });
+      });
+
+      bearingRange.addEventListener("input", () => {
+        const val = +bearingRange.value;
+        bearingValue.textContent = val + "°";
+        view.goTo({ heading: val }, { duration: 300 });
+      });
+
+      buildingsToggle.addEventListener("change", () => {
+        if (buildingsLayer) buildingsLayer.visible = buildingsToggle.checked;
+      });
+
+      // Sync sliders when user rotates/tilts manually
+      view.watch("camera", (cam) => {
+        const z = Math.round(view.zoom);
+        zoomRange.value = z;
+        zoomValue.textContent = z;
+        pitchRange.value = Math.round(cam.tilt);
+        pitchValue.textContent = Math.round(cam.tilt) + "°";
+        bearingRange.value = Math.round(cam.heading);
+        bearingValue.textContent = Math.round(cam.heading) + "°";
+      });
+
+      // ─── Article overlay ──────────────────────────────────────
+      const overlayEl = document.getElementById("article-overlay");
+      const overlayTitle = document.getElementById("article-title");
+      const overlayMeta = document.getElementById("article-meta");
+      const overlayBody = document.getElementById("article-body");
+      const overlayClose = document.getElementById("article-close");
+
+      overlayClose.addEventListener("click", () => { overlayEl.classList.remove("open"); overlayLock++; });
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") { overlayEl.classList.remove("open"); overlayLock++; }
+      });
+      // Click on empty area of overlay closes it
+      overlayEl.addEventListener("click", (e) => {
+        if (e.target === overlayEl) { overlayEl.classList.remove("open"); overlayLock++; }
+      });
+
+      function stripPronunciation(text) {
+        return text
+          // Entire paren starting with phonetic guide: ( KOL-ə-SEE-əm, ...anything... )
+          .replace(/\s*\(\s*[A-Za-zɑɒæəɛɜɪɔʊʌˈˌːʲ\s]*-[A-Za-zɑɒæəɛɜɪɔʊʌˈˌːʲ\s-]+,?[^)]*\)/g, "")
+          // (listen), (pronunciation), [IPA]
+          .replace(/\s*\([^)]*\b(listen|pronunciation|IPA)\b[^)]*\)/gi, "")
+          .replace(/\s*\[[^\]]*\b(listen|IPA|pronunciation)\b[^\]]*\]/gi, "")
+          // /slash IPA/
+          .replace(/\s*\/[^/]*\/\s*/g, " ")
+          // (Italian: Name [IPA]) or (French: Name)
+          .replace(/\s*\(\s*[A-Z][a-z]+:\s*[^)]*\[.*?\][^)]*\)/g, "")
+          .replace(/\s*\(\s*[A-Z][a-z]+:\s*[A-ZÀ-ž][^)]{0,40}\)/g, "")
+          // [standalone IPA]
+          .replace(/\s*\[[\w\sˈˌːʲʃʒŋɹɪɛæɔʊəðθɡɑɜʌɒ.ˑ]+\]/g, "")
+          // Parens with heavy IPA characters
+          .replace(/\s*\([^)]*[ˈˌːɪɛæɔʊəɹʃʒŋðθɡɑɜʌɒ]{2,}[^)]*\)/g, "")
+          // ; French: Name etc mid-sentence
+          .replace(/;\s*[A-Z][a-z]+:\s*\S+(\s+\S+){0,3}(?=[,;.])/g, "")
+          .replace(/\s{2,}/g, " ")
+          .replace(/\s+([,;.])/g, "$1")
+          .trim();
+      }
+
+      let overlayLock = 0; // prevent accidental closure
+
+      async function showArticleOverlay(title, meta) {
+        const myLock = ++overlayLock;
+        overlayTitle.textContent = title;
+        overlayMeta.textContent = meta || "";
+        overlayBody.innerHTML = `<p style="color:#999">Loading article…</p>`;
+        overlayEl.classList.add("open");
+
+        try {
+          const url = new URL("https://en.wikipedia.org/w/api.php");
+          url.searchParams.set("action", "query");
+          url.searchParams.set("titles", title);
+          url.searchParams.set("prop", "extracts|info");
+          url.searchParams.set("explaintext", "");
+          url.searchParams.set("exsectionformat", "plain");
+          url.searchParams.set("exchars", "4000");
+          url.searchParams.set("inprop", "url");
+          url.searchParams.set("format", "json");
+          url.searchParams.set("origin", "*");
+
+          const resp = await fetch(url);
+          const data = await resp.json();
+          const page = Object.values(data?.query?.pages || {})[0];
+
+          if (!page || page.missing) {
+            overlayBody.innerHTML = `<p>No Wikipedia article found for "${title}".</p>`;
+            return;
+          }
+
+          const extract = stripPronunciation(page.extract || "");
+          const wikiUrl = page.fullurl || `https://en.wikipedia.org/wiki/${encodeURIComponent(title)}`;
+
+          const paragraphs = extract.split(/\n+/).filter(p => p.trim());
+          let html = paragraphs.map(p => `<p>${p}</p>`).join("");
+          html += `<p><a href="${wikiUrl}" target="_blank">Read full article on Wikipedia →</a></p>`;
+
+          if (myLock !== overlayLock) return; // stale
+          overlayBody.innerHTML = html;
+          overlayTitle.textContent = page.title || title;
+          applyTypography();
+        } catch (err) {
+          if (myLock !== overlayLock) return;
+          overlayBody.innerHTML = `<p>Error loading article: ${err.message}</p>`;
+        }
+      }
+
+      // ─── Search ───────────────────────────────────────────────
+      async function handleSearch() {
+        const query = searchInput.value.trim();
+        if (!query) return;
+
+        overlayEl.classList.remove("open");
+        loadingEl.classList.add("active");
+
+        try {
+          let targetLat, targetLon, targetTitle = query;
+
+          // Try Wikipedia first
+          const searchUrl = new URL("https://en.wikipedia.org/w/api.php");
+          searchUrl.searchParams.set("action", "query");
+          searchUrl.searchParams.set("list", "search");
+          searchUrl.searchParams.set("srsearch", query);
+          searchUrl.searchParams.set("srlimit", "5");
+          searchUrl.searchParams.set("format", "json");
+          searchUrl.searchParams.set("origin", "*");
+
+          const resp = await fetch(searchUrl);
+          const data = await resp.json();
+          const results = data?.query?.search || [];
+
+          if (results.length) {
+            targetTitle = results[0].title;
+            const pageids = results.map(r => r.pageid).join("|");
+            const coordUrl = new URL("https://en.wikipedia.org/w/api.php");
+            coordUrl.searchParams.set("action", "query");
+            coordUrl.searchParams.set("pageids", pageids);
+            coordUrl.searchParams.set("prop", "coordinates");
+            coordUrl.searchParams.set("format", "json");
+            coordUrl.searchParams.set("origin", "*");
+
+            const coordResp = await fetch(coordUrl);
+            const pages = (await coordResp.json())?.query?.pages || {};
+            for (const r of results) {
+              const p = pages[r.pageid];
+              if (p?.coordinates?.length) {
+                targetLat = p.coordinates[0].lat;
+                targetLon = p.coordinates[0].lon;
+                targetTitle = p.title;
+                break;
+              }
+            }
+          }
+
+          // Fallback: Nominatim
+          if (!targetLat) {
+            const geo = await fetch(
+              `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`,
+              { headers: { "User-Agent": "WikiWorld/1.0" } }
+            );
+            const geoData = await geo.json();
+            if (geoData.length) {
+              targetLat = parseFloat(geoData[0].lat);
+              targetLon = parseFloat(geoData[0].lon);
+            }
+          }
+
+          if (!targetLat) return;
+
+          // Fetch building height to adjust pitch
+          let buildingHeight = 0;
+          try {
+            const bldgResp = await fetch(`/api/building-polygon?q=${encodeURIComponent(targetTitle)}`);
+            const bldg = await bldgResp.json();
+            if (bldg.found && bldg.height) buildingHeight = bldg.height;
+          } catch (_) {}
+
+          // Auto-pitch: lower pitch for taller buildings so they don't crop
+          // 20m → 72°, 100m → 64°, 300m → 44°, 800m → 30° (clamped)
+          const autoPitch = Math.max(30, Math.min(72, 74 - buildingHeight * 0.1));
+          const autoZoom = buildingHeight > 200 ? 17 : 18;
+
+          // Show article overlay first, then fly
+          const meta = buildingHeight ? `${buildingHeight.toFixed(0)}m` : "";
+          showArticleOverlay(targetTitle, meta);
+
+          // Fly to location, then highlight building
+          await view.goTo({
+            center: [targetLon, targetLat],
+            zoom: autoZoom,
+            heading: 15,
+            tilt: autoPitch,
+          }, { duration: 2000 });
+
+          // Highlight the building at the search location
+          highlightBuildingAtLocation(targetLat, targetLon);
+
+        } catch (err) {
+          console.error("Search error:", err);
+        } finally {
+          loadingEl.classList.remove("active");
+        }
+      }
+
+      searchBtn.addEventListener("click", handleSearch);
+      searchInput.addEventListener("keydown", (e) => { if (e.key === "Enter") handleSearch(); });
+    </script>
+  </body>
+</html>

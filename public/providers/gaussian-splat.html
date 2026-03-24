@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Gaussian Splatting</title>
+    <link href="/providers/provider.css" rel="stylesheet" />
+    <style>
+      #scene {
+        position: relative;
+      }
+      #splat-container {
+        width: 100%;
+        height: 100%;
+      }
+      #splat-container iframe,
+      #splat-container canvas {
+        width: 100%;
+        height: 100%;
+        border: 0;
+      }
+      .splat-info {
+        position: absolute;
+        bottom: 8px;
+        left: 8px;
+        right: 8px;
+        padding: 8px 12px;
+        background: rgba(255,255,255,0.92);
+        border: 1px solid rgba(0,0,0,0.12);
+        font-size: 11px;
+        color: #666;
+        backdrop-filter: blur(8px);
+        z-index: 5;
+      }
+      .splat-info strong {
+        color: #000;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="scene">
+      <div id="splat-container"></div>
+    </div>
+    <script type="module">
+      import { attachOverlay, createProviderRuntime } from "/providers/common.js";
+
+      attachOverlay("Gaussian Splatting", "NeRF/3DGS photorealistic scene capture. Not yet city-scale.");
+
+      const runtime = await createProviderRuntime({
+        providerId: "gaussian-splat",
+        capabilities: ["Photorealistic", "Scene-scale", "Emerging tech"],
+        onSettings,
+        getCamera,
+      });
+
+      // Try to load a Luma AI embed or a public .splat file
+      // Default: Drammen, Norway urban drone scan via SuperSplat
+      const DEFAULT_SPLAT_EMBED = "https://superspl.at/s?id=ad652ebc";
+      const lumaUrl = runtime.config.env.lumaSplatUrl || "";
+      const splatFileUrl = runtime.config.env.splatFileUrl || "";
+
+      if (lumaUrl) {
+        // Luma AI iframe embed
+        const iframe = document.createElement("iframe");
+        iframe.src = `${lumaUrl}?mode=sparkles&background=%23f5f5f5&showTitle=false&showMenu=false`;
+        iframe.allow = "xr-spatial-tracking; gyroscope; accelerometer";
+        iframe.allowFullscreen = true;
+        document.getElementById("splat-container").appendChild(iframe);
+
+        const info = document.createElement("div");
+        info.className = "splat-info";
+        info.innerHTML = "<strong>Luma AI capture.</strong> Camera controls are independent from the shared panel controls.";
+        document.getElementById("scene").appendChild(info);
+
+        runtime.ready("Luma splat loaded");
+        runtime.reportMetrics();
+      } else if (splatFileUrl) {
+        // Load via antimatter15/splat viewer in an iframe
+        const viewerUrl = `https://antimatter15.com/splat/?url=${encodeURIComponent(splatFileUrl)}`;
+        const iframe = document.createElement("iframe");
+        iframe.src = viewerUrl;
+        iframe.allow = "xr-spatial-tracking; gyroscope; accelerometer";
+        document.getElementById("splat-container").appendChild(iframe);
+
+        const info = document.createElement("div");
+        info.className = "splat-info";
+        info.innerHTML = "<strong>antimatter15/splat viewer.</strong> Camera controls are independent from the shared panel controls.";
+        document.getElementById("scene").appendChild(info);
+
+        runtime.ready("Splat file loaded");
+        runtime.reportMetrics();
+      } else {
+        // Default: load SuperSplat urban drone scan (Drammen, Norway)
+        const iframe = document.createElement("iframe");
+        iframe.src = DEFAULT_SPLAT_EMBED;
+        iframe.allow = "xr-spatial-tracking; gyroscope; accelerometer";
+        iframe.allowFullscreen = true;
+        document.getElementById("splat-container").appendChild(iframe);
+
+        const info = document.createElement("div");
+        info.className = "splat-info";
+        info.innerHTML = "<strong>Drammen, Norway — urban drone scan.</strong> No public NYC gaussian splat exists yet. Override via LUMA_SPLAT_URL or SPLAT_FILE_URL in .env. Camera controls are independent.";
+        document.getElementById("scene").appendChild(info);
+
+        runtime.ready("Default splat loaded");
+        runtime.reportMetrics();
+      }
+
+      // These are no-ops because splat viewers have their own camera controls
+      async function onSettings(settings) {
+        // Gaussian splat scenes have independent cameras — shared controls don't apply
+      }
+
+      function getCamera() {
+        return { lng: -73.985, lat: 40.758 };
+      }
+    </script>
+  </body>
+</html>

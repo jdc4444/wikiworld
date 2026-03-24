@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Google Photorealistic 3D Tiles</title>
+
+    <link href="https://cesium.com/downloads/cesiumjs/releases/1.126/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
+    <link href="/providers/provider.css" rel="stylesheet" />
+  </head>
+  <body>
+    <div id="scene"></div>
+    <script src="https://cesium.com/downloads/cesiumjs/releases/1.126/Build/Cesium/Cesium.js" crossorigin="anonymous"></script>
+    <script type="module">
+      import { attachOverlay, createProviderRuntime, zoomToRangeMeters } from "/providers/common.js";
+
+      attachOverlay("Google photorealistic", "Highest realism here, with intentionally limited restyling control.");
+
+      const runtime = await createProviderRuntime({
+        providerId: "google-photorealistic",
+        capabilities: ["Photoreal mesh", "High realism", "Low styling freedom"],
+        onSettings,
+        getCamera,
+      });
+
+      if (!runtime.config.env.googleMapsApiKey) {
+        runtime.fallback(
+          "Google API key missing",
+          "Add GOOGLE_MAPS_API_KEY to .env to enable the Google photorealistic NYC comparison panel.",
+        );
+        runtime.status("error", "Missing key");
+        throw new Error("Missing key");
+      }
+
+      let viewer;
+      try {
+        viewer = new Cesium.Viewer("scene", {
+          animation: false,
+          baseLayerPicker: false,
+          geocoder: false,
+          homeButton: false,
+          infoBox: false,
+          timeline: false,
+          navigationHelpButton: false,
+          sceneModePicker: false,
+          selectionIndicator: false,
+          baseLayer: false,
+        });
+      } catch (e) {
+        console.error("Cesium Viewer init failed:", e);
+        runtime.fallback("Viewer failed", e.message);
+        runtime.status("error", "Viewer: " + e.message);
+        throw e;
+      }
+
+      viewer.scene.globe.show = true;
+      viewer.scene.globe.depthTestAgainstTerrain = true;
+      viewer.scene.setTerrain(Cesium.Terrain.fromWorldTerrain());
+      viewer.scene.skyAtmosphere.show = true;
+      viewer.scene.fog.enabled = true;
+      viewer.cesiumWidget.creditContainer.style.display = "none";
+      // Match MapLibre's 36.87° vertical FOV for consistent zoom calibration
+      viewer.camera.frustum.fov = 0.6435;
+
+      // Position camera looking at center (matches Mapbox/MapLibre camera model)
+      function applyCameraLookAt(s, instant) {
+        const vh = document.getElementById("scene").clientHeight || 500;
+        const range = zoomToRangeMeters(s.zoom, s.center.lat, vh);
+        const target = Cesium.Cartesian3.fromDegrees(s.center.lng, s.center.lat, 0);
+        const hpr = new Cesium.HeadingPitchRange(
+          Cesium.Math.toRadians(s.bearing),
+          Cesium.Math.toRadians(s.pitch - 90),
+          range,
+        );
+        if (instant) {
+          viewer.camera.lookAt(target, hpr);
+          viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
+        } else {
+          viewer.camera.flyTo({
+            destination: Cesium.Cartesian3.fromDegrees(
+              s.center.lng, s.center.lat, range * Math.cos(Cesium.Math.toRadians(s.pitch))),
+            orientation: {
+              heading: Cesium.Math.toRadians(s.bearing),
+              pitch: Cesium.Math.toRadians(s.pitch - 90),
+              roll: 0,
+            },
+            duration: 0.9,
+          });
+        }
+      }
+      applyCameraLookAt({ ...runtime.settings, center: runtime.settings.center }, true);
+
+      let tileset;
+      try {
+        const rootUrl = `https://tile.googleapis.com/v1/3dtiles/root.json?key=${runtime.config.env.googleMapsApiKey}`;
+        tileset = await Cesium.Cesium3DTileset.fromUrl(rootUrl, {
+          showCreditsOnScreen: true,
+          maximumScreenSpaceError: 1.5,
+        });
+      } catch (e) {
+        console.error("Google 3D Tiles load failed:", e);
+        runtime.fallback("3D Tiles failed", e.message);
+        runtime.status("error", "Tiles: " + e.message);
+        throw e;
+      }
+      tileset.shadows = Cesium.ShadowMode.ENABLED;
+      viewer.shadows = true;
+      viewer.shadowMap.size = 2048;
+      viewer.shadowMap.softShadows = true;
+      viewer.shadowMap.darkness = 0.3;
+      viewer.scene.primitives.add(tileset);
+
+      await onSettings(runtime.settings, true);
+      runtime.ready("Google ready");
+      runtime.reportMetrics();
+
+      async function onSettings(settings, instant) {
+        viewer.shadows = settings.sun;
+        if (settings.sun) {
+          viewer.shadowMap.darkness = settings.shadowDarkness ?? 0.15;
+          viewer.scene.light = new Cesium.SunLight({ intensity: settings.lightIntensity ?? 1.0 });
+        } else {
+          const angle = Cesium.Math.toRadians(settings.lightAngle ?? 210);
+          const alt = Cesium.Math.toRadians(settings.lightAltitude ?? 30);
+          viewer.scene.light = new Cesium.DirectionalLight({
+            direction: new Cesium.Cartesian3(
+              Math.sin(angle) * Math.cos(alt),
+              Math.cos(angle) * Math.cos(alt),
+              -Math.sin(alt),
+            ),
+            intensity: settings.lightIntensity ?? 1.0,
+          });
+        }
+
+        // Atmosphere
+        viewer.scene.fog.enabled = settings.fog !== false;
+        viewer.scene.skyAtmosphere.show = settings.sky !== false;
+        viewer.scene.skyAtmosphere.hueShift = settings.skyHueShift ?? 0;
+
+        // FXAA
+        if (viewer.scene.postProcessStages?.fxaa) {
+          viewer.scene.postProcessStages.fxaa.enabled = settings.fxaa !== false;
+        }
+
+        // Apply surface color as a tint — use white (#ffffff) for natural look,
+        // grey for desaturated, black for dark mode, or any color for artistic tint.
+        // The accent color is ignored here since photorealistic tiles have their own color.
+        const wash = settings.surfaceColor || "#ffffff";
+        if (wash === "#ffffff" || wash === "#FFFFFF") {
+          tileset.style = undefined; // Natural — no tint
+        } else {
+          tileset.style = new Cesium.Cesium3DTileStyle({
+            color: `color('${wash}', ${Math.max(0.25, settings.opacity)})`,
+          });
+        }
+
+        applyCameraLookAt(settings, instant);
+      }
+
+      function getCamera() {
+        const cartographic = Cesium.Cartographic.fromCartesian(viewer.camera.positionWC);
+        return {
+          lng: Cesium.Math.toDegrees(cartographic.longitude),
+          lat: Cesium.Math.toDegrees(cartographic.latitude),
+        };
+      }
+    </script>
+  </body>
+</html>
+

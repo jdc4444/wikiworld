@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WikiWorld — Screenshot Review</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif;
+      background: #f5f5f5;
+      color: #222;
+      padding: 24px;
+    }
+    h1 {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+    .subtitle {
+      color: #666;
+      font-size: 14px;
+      margin-bottom: 32px;
+    }
+    .landmark-section {
+      margin-bottom: 48px;
+    }
+    .landmark-title {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid #e0e0e0;
+    }
+    .variant-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+    .variant-card {
+      background: #fff;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+    .variant-card img {
+      width: 100%;
+      height: auto;
+      display: block;
+      cursor: pointer;
+    }
+    .variant-card img.missing {
+      height: 200px;
+      background: #eee;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .variant-label {
+      padding: 6px 10px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #666;
+      background: #fafafa;
+      border-top: 1px solid #eee;
+    }
+    /* Lightbox */
+    .lightbox {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.85);
+      z-index: 100;
+      cursor: pointer;
+      align-items: center;
+      justify-content: center;
+    }
+    .lightbox.active { display: flex; }
+    .lightbox img {
+      max-width: 95vw;
+      max-height: 95vh;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <h1>WikiWorld — Screenshot Review</h1>
+  <p class="subtitle">13 landmarks across 3 map engines: MapLibre, Mapbox, ArcGIS</p>
+  <div id="content"></div>
+  <div class="lightbox" id="lightbox" onclick="this.classList.remove('active')">
+    <img id="lightbox-img" src="">
+  </div>
+
+  <script>
+    const LANDMARKS = [
+      'Empire State Building',
+      'Statue of Liberty',
+      'Guggenheim Museum New York',
+      'St Peters Basilica Rome',
+      'Eiffel Tower',
+      'Tokyo Tower',
+      'Burj Khalifa',
+      'Forbidden City',
+      'Zocalo Mexico City',
+      'Pyramid of the Sun Teotihuacan',
+      'Great Pyramid of Giza',
+      'Louvre',
+      'CentralWorld Bangkok',
+    ];
+
+    const VARIANTS = ['maplibre', 'mapbox', 'arcgis'];
+
+    function slugify(s) {
+      return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+$/, '');
+    }
+
+    const content = document.getElementById('content');
+
+    for (const landmark of LANDMARKS) {
+      const slug = slugify(landmark);
+      const section = document.createElement('div');
+      section.className = 'landmark-section';
+
+      let html = `<div class="landmark-title">${landmark}</div><div class="variant-row">`;
+      for (const variant of VARIANTS) {
+        const filename = `${variant}-${slug}.jpg`;
+        html += `
+          <div class="variant-card">
+            <img src="${filename}" alt="${landmark} — ${variant}"
+                 onerror="this.style.height='200px';this.style.background='#eee';this.alt='Not captured yet'"
+                 onclick="document.getElementById('lightbox-img').src=this.src;document.getElementById('lightbox').classList.add('active')">
+            <div class="variant-label">${variant}</div>
+          </div>`;
+      }
+      html += '</div>';
+      section.innerHTML = html;
+      content.appendChild(section);
+    }
+  </script>
+</body>
+</html>
