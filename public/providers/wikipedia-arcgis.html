@@ -509,7 +509,9 @@
 
       // Buildings quick-toggle
       const buildingsIcon = document.getElementById("buildings-icon");
-      buildingsIcon.addEventListener("click", () => {
+      buildingsIcon.addEventListener("click", (e) => {
+        e.stopPropagation();
+        closeAllPopovers();
         buildingsToggle.checked = !buildingsToggle.checked;
         if (buildingsLayer) buildingsLayer.visible = buildingsToggle.checked;
         buildingsIcon.classList.toggle("active", buildingsToggle.checked);

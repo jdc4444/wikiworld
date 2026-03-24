@@ -5,7 +5,8 @@
       "name": "wikiworld",
       "runtimeExecutable": "node",
       "runtimeArgs": ["server.js"],
-      "port": 4174
+      "port": 4174,
+      "env": { "NODE_PATH": "/Users/alphaone/Documents/Code/wikiworld" }
     }
   ]
 }
