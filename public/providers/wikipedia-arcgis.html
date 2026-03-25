@@ -426,6 +426,11 @@
             </label>
           </div>
         </div>
+
+        <!-- Camera save -->
+        <div class="bar-icon" id="camera-save-icon" title="Save camera for this place" style="opacity:0.4;pointer-events:none">
+          <iconify-icon icon="lucide:camera" width="18"></iconify-icon>
+        </div>
       </div>
     </div>
 
@@ -718,6 +723,43 @@
           dot.classList.add("active");
           setHighlightColor(dot.dataset.color);
         });
+      });
+
+      // ─── Camera save/load ────────────────────────────────────
+      const CAMERA_STORAGE_KEY = "wikiworld-cameras";
+      const cameraSaveIcon = document.getElementById("camera-save-icon");
+      let currentSearchTitle = null;
+
+      function getSavedCameras() {
+        try { return JSON.parse(localStorage.getItem(CAMERA_STORAGE_KEY) || "{}"); } catch { return {}; }
+      }
+
+      function saveCamera(title) {
+        if (!title) return;
+        const cam = view.camera;
+        const cameras = getSavedCameras();
+        cameras[title.toLowerCase()] = {
+          title,
+          position: { x: cam.position.longitude, y: cam.position.latitude, z: cam.position.z },
+          heading: cam.heading,
+          tilt: cam.tilt,
+          fov: cam.fov,
+          savedAt: new Date().toISOString(),
+        };
+        localStorage.setItem(CAMERA_STORAGE_KEY, JSON.stringify(cameras));
+        // Flash the icon green briefly
+        cameraSaveIcon.style.color = "#2a9d8f";
+        setTimeout(() => { cameraSaveIcon.style.color = ""; }, 1000);
+        console.log(`Camera saved for "${title}":`, cameras[title.toLowerCase()]);
+      }
+
+      function loadCamera(title) {
+        const cameras = getSavedCameras();
+        return cameras[title.toLowerCase()] || null;
+      }
+
+      cameraSaveIcon.addEventListener("click", () => {
+        if (currentSearchTitle) saveCamera(currentSearchTitle);
       });
 
       // ─── Typography controls ───────────────────────────────────
@@ -1115,13 +1157,29 @@
           const meta = buildingHeight ? `${buildingHeight.toFixed(0)}m` : "";
           showArticleOverlay(targetTitle, meta);
 
-          // Fly to offset position looking toward the building
-          await view.goTo({
-            target: [camLng, camLat],
-            zoom: autoZoom,
-            heading: heading,
-            tilt: autoTilt,
-          }, { duration: 2000 });
+          // Enable camera save button
+          currentSearchTitle = targetTitle;
+          cameraSaveIcon.style.opacity = "1";
+          cameraSaveIcon.style.pointerEvents = "auto";
+
+          // Check for user-saved camera position
+          const savedCam = loadCamera(targetTitle);
+          if (savedCam) {
+            await view.goTo({
+              position: { longitude: savedCam.position.x, latitude: savedCam.position.y, z: savedCam.position.z },
+              heading: savedCam.heading,
+              tilt: savedCam.tilt,
+            }, { duration: 2000 });
+            console.log(`Using saved camera for "${targetTitle}"`);
+          } else {
+            // Fly to auto-calculated position
+            await view.goTo({
+              target: [camLng, camLat],
+              zoom: autoZoom,
+              heading: heading,
+              tilt: autoTilt,
+            }, { duration: 2000 });
+          }
 
           // Highlight the building at the search location
           highlightBuildingAtLocation(targetLat, targetLon);
