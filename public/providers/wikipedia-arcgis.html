@@ -1082,11 +1082,11 @@
           let autoTilt, autoZoom, offsetMeters;
 
           if (h < 30) {
-            // Short/ground-level landmarks (memorials, plazas, ruins)
-            // Bird's eye so surrounding towers don't block the view
-            autoTilt = 45;
-            autoZoom = 18;
-            offsetMeters = 30;
+            // Short/ground-level landmarks (memorials, plazas, small buildings)
+            // Close overhead view — zoom in tight so they fill the frame
+            autoTilt = 50;
+            autoZoom = 19;
+            offsetMeters = 20;
           } else if (h < 150) {
             // Medium buildings — balanced angle
             autoTilt = Math.min(68, 55 + h * 0.08);
