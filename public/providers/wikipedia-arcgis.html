@@ -1053,18 +1053,16 @@
           // Cinematic camera: position camera south of building, looking up at it
           // The higher the building, the further back + more tilted up
           const heading = 15; // consistent NNE heading
-          let autoZoom, autoTilt, offsetMeters;
-          if (buildingHeight > 500) {
-            autoZoom = 17.5; autoTilt = 75; offsetMeters = 400;
-          } else if (buildingHeight > 300) {
-            autoZoom = 18; autoTilt = 78; offsetMeters = 300;
-          } else if (buildingHeight > 150) {
-            autoZoom = 18; autoTilt = 75; offsetMeters = 200;
-          } else if (buildingHeight > 50) {
-            autoZoom = 18; autoTilt = 72; offsetMeters = 120;
-          } else {
-            autoZoom = 18; autoTilt = 65; offsetMeters = 80;
-          }
+          // Continuous camera formula based on building height
+          // Goal: building fills ~60-70% of frame height, never clipped
+          const h = Math.max(buildingHeight, 10);
+          // Offset = how far back camera sits (proportional to height)
+          const offsetMeters = h * 0.8 + 50;
+          // Tilt: short buildings → 65° (more top-down), tall → 72° (more street-level)
+          const autoTilt = Math.min(72, Math.max(60, 60 + h * 0.02));
+          // Zoom: pull back for taller buildings
+          // 10m → 18.5, 100m → 18, 300m → 17.5, 800m → 16.5
+          const autoZoom = Math.max(16, Math.min(18.5, 18.5 - Math.log2(h / 10) * 0.4));
 
           // Offset camera target opposite to heading so building is IN the frame
           // heading=15 means looking NNE, so offset camera target to SSW
