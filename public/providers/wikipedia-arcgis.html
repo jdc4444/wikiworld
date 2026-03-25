@@ -549,35 +549,64 @@
           activeHighlight.remove();
           activeHighlight = null;
         }
-        if (!buildingsLayer) return;
-
-        // Wait for layer view
-        const layerView = await view.whenLayerView(buildingsLayer);
-
-        // Query buildings near the search target
-        const point = {
-          type: "point",
-          longitude: lng,
-          latitude: lat,
-          spatialReference: { wkid: 4326 },
-        };
+        if (!buildingsLayer) { console.warn("No buildings layer"); return; }
 
         try {
+          const layerView = await view.whenLayerView(buildingsLayer);
+
+          // Try layerView query first (queries rendered features)
+          const screenPoint = view.toScreen({ x: lng, y: lat, spatialReference: { wkid: 4326 } });
+
+          // Method 1: hitTest at the target coordinates
+          const hitResult = await view.hitTest(screenPoint, { include: [buildingsLayer] });
+          if (hitResult.results.length > 0) {
+            const objectIds = hitResult.results
+              .filter(r => r.graphic?.layer === buildingsLayer)
+              .map(r => r.graphic.getObjectId());
+            if (objectIds.length > 0) {
+              activeHighlight = layerView.highlight(objectIds);
+              console.log(`Highlighted ${objectIds.length} buildings via hitTest`);
+              return;
+            }
+          }
+
+          // Method 2: spatial query fallback
           const query = buildingsLayer.createQuery();
-          query.geometry = point;
-          query.distance = 50; // meters
+          query.geometry = {
+            type: "point",
+            longitude: lng,
+            latitude: lat,
+            spatialReference: { wkid: 4326 },
+          };
+          query.distance = 50;
           query.units = "meters";
           query.returnGeometry = false;
-          query.outFields = ["*"];
+          query.outFields = ["OBJECTID"];
 
           const result = await buildingsLayer.queryFeatures(query);
           if (result.features.length > 0) {
             activeHighlight = layerView.highlight(result.features);
+            console.log(`Highlighted ${result.features.length} buildings via query`);
+          } else {
+            console.log("No buildings found near", lat, lng);
           }
         } catch (e) {
-          console.warn("Building highlight query failed:", e);
+          console.warn("Building highlight failed:", e);
         }
       }
+
+      // ─── Click-to-highlight buildings ─────────────────────────
+      view.on("click", async (event) => {
+        const hitResult = await view.hitTest(event, { include: [buildingsLayer] });
+        const bldgResults = hitResult.results.filter(r => r.graphic?.layer === buildingsLayer);
+        if (bldgResults.length > 0) {
+          if (activeHighlight) { activeHighlight.remove(); activeHighlight = null; }
+          const layerView = await view.whenLayerView(buildingsLayer);
+          const objectIds = bldgResults.map(r => r.graphic.getObjectId());
+          activeHighlight = layerView.highlight(objectIds);
+          console.log(`Click-highlighted building OIDs: ${objectIds}`);
+        }
+      });
 
       // ─── UI refs ───────────────────────────────────────────────
       const loadingEl = document.getElementById("map-loading");
