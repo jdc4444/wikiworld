@@ -1073,19 +1073,31 @@
             if (bldg.found && bldg.height) buildingHeight = bldg.height;
           } catch (_) {}
 
-          // Cinematic camera: position camera south of building, looking up at it
-          // The higher the building, the further back + more tilted up
-          const heading = 15; // consistent NNE heading
-          // Continuous camera formula based on building height
-          // Goal: building fills ~60-70% of frame height, never clipped
+          // Cinematic camera adapted to building height:
+          // SHORT (< 30m): overhead view — look DOWN to avoid surrounding buildings blocking view
+          // MEDIUM (30-150m): mid-angle — balanced view
+          // TALL (150m+): street-level hero — look UP at the building
+          const heading = 15;
           const h = Math.max(buildingHeight, 10);
-          // Offset = how far back camera sits (proportional to height)
-          const offsetMeters = h * 0.8 + 50;
-          // Tilt: short buildings → 65° (more top-down), tall → 72° (more street-level)
-          const autoTilt = Math.min(72, Math.max(60, 60 + h * 0.02));
-          // Zoom: pull back for taller buildings
-          // 10m → 18.5, 100m → 18, 300m → 17.5, 800m → 16.5
-          const autoZoom = Math.max(16, Math.min(18.5, 18.5 - Math.log2(h / 10) * 0.4));
+          let autoTilt, autoZoom, offsetMeters;
+
+          if (h < 30) {
+            // Short/ground-level landmarks (memorials, plazas, ruins)
+            // Bird's eye so surrounding towers don't block the view
+            autoTilt = 45;
+            autoZoom = 18;
+            offsetMeters = 30;
+          } else if (h < 150) {
+            // Medium buildings — balanced angle
+            autoTilt = Math.min(68, 55 + h * 0.08);
+            autoZoom = 18;
+            offsetMeters = h * 0.6 + 40;
+          } else {
+            // Tall/supertall — cinematic street-level hero shot
+            autoTilt = Math.min(72, 65 + h * 0.01);
+            autoZoom = Math.max(16, 18.5 - Math.log2(h / 10) * 0.4);
+            offsetMeters = h * 0.8 + 50;
+          }
 
           // Offset camera target opposite to heading so building is IN the frame
           // heading=15 means looking NNE, so offset camera target to SSW
