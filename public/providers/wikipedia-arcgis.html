@@ -369,6 +369,19 @@
               <span>Time of Day <strong id="tod-value">12:00</strong></span>
               <input id="tod-range" type="range" min="0" max="23.75" step="0.25" value="12" />
             </label>
+            <label class="field" style="margin-top:8px">
+              <span>Building Color</span>
+              <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap">
+                <span class="color-dot bldg-color active" data-color="#c8c2ba" style="background:#c8c2ba" title="Default"></span>
+                <span class="color-dot bldg-color" data-color="#2a2a2a" style="background:#2a2a2a" title="Dark"></span>
+                <span class="color-dot bldg-color" data-color="#e63946" style="background:#e63946" title="Red"></span>
+                <span class="color-dot bldg-color" data-color="#457b9d" style="background:#457b9d" title="Blue"></span>
+                <span class="color-dot bldg-color" data-color="#2a9d8f" style="background:#2a9d8f" title="Teal"></span>
+                <span class="color-dot bldg-color" data-color="#e9c46a" style="background:#e9c46a" title="Gold"></span>
+                <span class="color-dot bldg-color" data-color="#f4a261" style="background:#f4a261" title="Orange"></span>
+                <span class="color-dot bldg-color" data-color="#ffffff" style="background:#ffffff;border:1px solid #ccc" title="White"></span>
+              </div>
+            </label>
           </div>
         </div>
 
@@ -503,9 +516,32 @@
 
       const buildingsLayer = scene.allLayers.find(l => l.title === "OpenStreetMap 3D Buildings");
 
-      // Disable native popup on buildings layer
+      // Set building color via renderer
+      let currentBuildingColor = "#c8c2ba"; // default light grey
+      function setBuildingColor(hex) {
+        if (!buildingsLayer) return;
+        currentBuildingColor = hex;
+        buildingsLayer.renderer = {
+          type: "simple",
+          symbol: {
+            type: "mesh-3d",
+            symbolLayers: [{
+              type: "fill",
+              material: { color: hex },
+              edges: {
+                type: "solid",
+                color: [0, 0, 0, 0.15],
+                size: 0.5,
+              },
+            }],
+          },
+        };
+      }
+
+      // Apply default color
       if (buildingsLayer) {
         buildingsLayer.popupEnabled = false;
+        setBuildingColor(currentBuildingColor);
       }
       view.popup.autoOpenEnabled = false;
 
@@ -632,6 +668,15 @@
 
       todRange.addEventListener("input", updateLighting);
       shadowsToggle.addEventListener("change", updateLighting);
+
+      // ─── Building color controls ──────────────────────────────
+      document.querySelectorAll(".bldg-color").forEach(dot => {
+        dot.addEventListener("click", () => {
+          document.querySelectorAll(".bldg-color").forEach(d => d.classList.remove("active"));
+          dot.classList.add("active");
+          setBuildingColor(dot.dataset.color);
+        });
+      });
 
       // ─── Typography controls ───────────────────────────────────
       const fontsizeRange = document.getElementById("fontsize-range");
