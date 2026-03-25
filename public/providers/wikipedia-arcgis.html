@@ -566,22 +566,45 @@
               [-15, -15], [15, -15], [-15, 15], [15, 15],
             ];
 
-            const allOids = new Set();
+            // Collect hits with their geographic positions
+            const candidates = new Map(); // oid → { oid, dist }
             for (const [dx, dy] of offsets) {
               const pt = { x: screenPoint.x + dx, y: screenPoint.y + dy };
               const hit = await view.hitTest(pt, { include: [buildingsLayer] });
               for (const r of (hit.results || [])) {
                 if (r.graphic?.layer === buildingsLayer) {
                   const oid = r.graphic.getObjectId();
-                  if (oid != null) allOids.add(oid);
+                  if (oid == null) continue;
+                  // Calculate distance from hit point to target coordinates
+                  const mapPt = r.mapPoint;
+                  if (mapPt) {
+                    const dLat = (mapPt.latitude - lat) * 111320;
+                    const dLng = (mapPt.longitude - lng) * 111320 * Math.cos(lat * Math.PI / 180);
+                    const dist = Math.sqrt(dLat * dLat + dLng * dLng);
+                    if (!candidates.has(oid) || dist < candidates.get(oid).dist) {
+                      candidates.set(oid, { oid, dist });
+                    }
+                  } else {
+                    candidates.set(oid, { oid, dist: 0 });
+                  }
                 }
               }
             }
 
-            if (allOids.size > 0) {
-              activeHighlight = layerView.highlight([...allOids]);
-              console.log(`Highlighted ${allOids.size} buildings (attempt ${attempt + 1})`);
+            // Only highlight buildings within 50m of target coordinates
+            const nearby = [...candidates.values()]
+              .filter(c => c.dist < 50)
+              .map(c => c.oid);
+
+            if (nearby.length > 0) {
+              activeHighlight = layerView.highlight(nearby);
+              console.log(`Highlighted ${nearby.length} buildings within 50m (attempt ${attempt + 1})`);
               return;
+            }
+            // If nothing within 50m but we have candidates, log for debugging
+            if (candidates.size > 0) {
+              const closest = [...candidates.values()].sort((a, b) => a.dist - b.dist)[0];
+              console.log(`Attempt ${attempt + 1}: closest building is ${closest.dist.toFixed(0)}m away`);
             }
           } catch (e) {
             console.warn(`Highlight attempt ${attempt + 1} failed:`, e);
