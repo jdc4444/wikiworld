@@ -544,55 +544,50 @@
       let activeHighlight = null;
 
       async function highlightBuildingAtLocation(lat, lng) {
-        // Remove previous highlight
         if (activeHighlight) {
           activeHighlight.remove();
           activeHighlight = null;
         }
         if (!buildingsLayer) { console.warn("No buildings layer"); return; }
 
-        try {
-          const layerView = await view.whenLayerView(buildingsLayer);
+        const layerView = await view.whenLayerView(buildingsLayer);
 
-          // Try layerView query first (queries rendered features)
-          const screenPoint = view.toScreen({ x: lng, y: lat, spatialReference: { wkid: 4326 } });
+        // Retry hitTest up to 5 times with delays — tiles need time to load
+        for (let attempt = 0; attempt < 5; attempt++) {
+          await new Promise(r => setTimeout(r, attempt === 0 ? 500 : 1500));
 
-          // Method 1: hitTest at the target coordinates
-          const hitResult = await view.hitTest(screenPoint, { include: [buildingsLayer] });
-          if (hitResult.results.length > 0) {
-            const objectIds = hitResult.results
-              .filter(r => r.graphic?.layer === buildingsLayer)
-              .map(r => r.graphic.getObjectId());
-            if (objectIds.length > 0) {
-              activeHighlight = layerView.highlight(objectIds);
-              console.log(`Highlighted ${objectIds.length} buildings via hitTest`);
+          try {
+            const screenPoint = view.toScreen({ x: lng, y: lat, spatialReference: { wkid: 4326 } });
+            if (!screenPoint) continue;
+
+            // Sample a grid of points around the target (building might not be at exact center)
+            const offsets = [
+              [0, 0], [-15, 0], [15, 0], [0, -15], [0, 15],
+              [-15, -15], [15, -15], [-15, 15], [15, 15],
+            ];
+
+            const allOids = new Set();
+            for (const [dx, dy] of offsets) {
+              const pt = { x: screenPoint.x + dx, y: screenPoint.y + dy };
+              const hit = await view.hitTest(pt, { include: [buildingsLayer] });
+              for (const r of (hit.results || [])) {
+                if (r.graphic?.layer === buildingsLayer) {
+                  const oid = r.graphic.getObjectId();
+                  if (oid != null) allOids.add(oid);
+                }
+              }
+            }
+
+            if (allOids.size > 0) {
+              activeHighlight = layerView.highlight([...allOids]);
+              console.log(`Highlighted ${allOids.size} buildings (attempt ${attempt + 1})`);
               return;
             }
+          } catch (e) {
+            console.warn(`Highlight attempt ${attempt + 1} failed:`, e);
           }
-
-          // Method 2: spatial query fallback
-          const query = buildingsLayer.createQuery();
-          query.geometry = {
-            type: "point",
-            longitude: lng,
-            latitude: lat,
-            spatialReference: { wkid: 4326 },
-          };
-          query.distance = 50;
-          query.units = "meters";
-          query.returnGeometry = false;
-          query.outFields = ["OBJECTID"];
-
-          const result = await buildingsLayer.queryFeatures(query);
-          if (result.features.length > 0) {
-            activeHighlight = layerView.highlight(result.features);
-            console.log(`Highlighted ${result.features.length} buildings via query`);
-          } else {
-            console.log("No buildings found near", lat, lng);
-          }
-        } catch (e) {
-          console.warn("Building highlight failed:", e);
         }
+        console.log("Building highlight: no features found after 5 attempts");
       }
 
       // ─── Click-to-highlight buildings ─────────────────────────
