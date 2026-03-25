@@ -231,6 +231,15 @@
         color: #000;
         flex: 1;
       }
+      .article-panel .nav-btn {
+        background: none; border: 1px solid #ddd; border-radius: 50%; width: 32px; height: 32px;
+        display: flex; align-items: center; justify-content: center; cursor: pointer;
+        color: #333; flex-shrink: 0; transition: background 0.15s;
+      }
+      .article-panel .nav-btn:hover { background: #f0f0f0; }
+      .article-panel .nav-counter {
+        font-size: 12px; color: #999; white-space: nowrap; font-variant-numeric: tabular-nums;
+      }
       .article-panel .article-close {
         background: none;
         color: #666;
@@ -438,8 +447,17 @@
       <div class="drag-handle" id="drag-handle"><div class="handle-bar"></div></div>
       <div class="article-panel-inner" id="article-inner">
         <div class="article-header">
+          <button class="nav-btn" id="nav-prev" title="Previous landmark">
+            <iconify-icon icon="lucide:chevron-left" width="20"></iconify-icon>
+          </button>
           <div class="article-title" id="article-title"></div>
-          <button class="article-close" id="article-close">Close</button>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="nav-counter" id="nav-counter"></span>
+            <button class="nav-btn" id="nav-next" title="Next landmark">
+              <iconify-icon icon="lucide:chevron-right" width="20"></iconify-icon>
+            </button>
+            <button class="article-close" id="article-close">Close</button>
+          </div>
         </div>
         <div class="article-meta" id="article-meta"></div>
         <img class="article-thumb" id="article-thumb" style="display:none" />
@@ -724,6 +742,59 @@
           setHighlightColor(dot.dataset.color);
         });
       });
+
+      // ─── Landmark tour nav ─────────────────────────────────────
+      let landmarks = [];
+      let landmarkIndex = -1;
+      const navPrev = document.getElementById("nav-prev");
+      const navNext = document.getElementById("nav-next");
+      const navCounter = document.getElementById("nav-counter");
+
+      fetch("/data/top-landmarks.json").then(r => r.json()).then(data => {
+        landmarks = data;
+        console.log(`Loaded ${landmarks.length} landmarks`);
+      }).catch(e => console.warn("Failed to load landmarks:", e));
+
+      function navigateToLandmark(index) {
+        if (!landmarks.length) return;
+        landmarkIndex = ((index % landmarks.length) + landmarks.length) % landmarks.length;
+        const lm = landmarks[landmarkIndex];
+        navCounter.textContent = `${landmarkIndex + 1} / ${landmarks.length}`;
+        // Trigger search with this landmark's name
+        searchInput.value = lm.name;
+        searchInput.dispatchEvent(new Event("input"));
+        searchBtn.click();
+      }
+
+      navPrev.addEventListener("click", (e) => {
+        e.stopPropagation();
+        navigateToLandmark(landmarkIndex - 1);
+      });
+      navNext.addEventListener("click", (e) => {
+        e.stopPropagation();
+        navigateToLandmark(landmarkIndex + 1);
+      });
+
+      // Arrow keys for nav when panel is visible
+      document.addEventListener("keydown", (e) => {
+        if (e.target.tagName === "INPUT") return;
+        if (panelState !== "collapsed") {
+          if (e.key === "ArrowLeft") { e.preventDefault(); navigateToLandmark(landmarkIndex - 1); }
+          if (e.key === "ArrowRight") { e.preventDefault(); navigateToLandmark(landmarkIndex + 1); }
+        }
+      });
+
+      // When user searches manually, try to sync index to landmark list
+      function syncLandmarkIndex(title) {
+        const idx = landmarks.findIndex(l => l.name.toLowerCase() === title.toLowerCase());
+        if (idx >= 0) {
+          landmarkIndex = idx;
+          navCounter.textContent = `${idx + 1} / ${landmarks.length}`;
+        } else {
+          landmarkIndex = -1;
+          navCounter.textContent = "";
+        }
+      }
 
       // ─── Camera save/load ────────────────────────────────────
       const CAMERA_STORAGE_KEY = "wikiworld-cameras";
@@ -1156,6 +1227,7 @@
           // Show article overlay first, then fly
           const meta = buildingHeight ? `${buildingHeight.toFixed(0)}m` : "";
           showArticleOverlay(targetTitle, meta);
+          syncLandmarkIndex(targetTitle);
 
           // Enable camera save button
           currentSearchTitle = targetTitle;
