@@ -1094,9 +1094,10 @@
             offsetMeters = h * 0.6 + 40;
           } else {
             // Tall/supertall — cinematic street-level hero shot
+            // 150m → zoom 18, tilt 67 | 443m → zoom 17.4, tilt 69 | 828m → zoom 16.4, tilt 72
             autoTilt = Math.min(72, 65 + h * 0.01);
-            autoZoom = Math.max(16, 18.5 - Math.log2(h / 10) * 0.4);
-            offsetMeters = h * 0.8 + 50;
+            autoZoom = Math.max(16.5, 18.5 - h * 0.0025);
+            offsetMeters = h * 0.5 + 40;
           }
 
           // Offset camera target opposite to heading so building is IN the frame
