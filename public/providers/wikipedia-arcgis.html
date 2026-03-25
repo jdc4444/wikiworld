@@ -445,6 +445,10 @@
     <script type="module">
       import WebScene from "https://js.arcgis.com/4.34/@arcgis/core/WebScene.js";
       import SceneView from "https://js.arcgis.com/4.34/@arcgis/core/views/SceneView.js";
+      import SimpleRenderer from "https://js.arcgis.com/4.34/@arcgis/core/renderers/SimpleRenderer.js";
+      import MeshSymbol3D from "https://js.arcgis.com/4.34/@arcgis/core/symbols/MeshSymbol3D.js";
+      import FillSymbol3DLayer from "https://js.arcgis.com/4.34/@arcgis/core/symbols/FillSymbol3DLayer.js";
+      import SolidEdges3D from "https://js.arcgis.com/4.34/@arcgis/core/symbols/edges/SolidEdges3D.js";
 
       // ─── Camera persistence ────────────────────────────────────
       const CAMERA_KEY = "wikiworld-arcgis-camera";
@@ -465,7 +469,8 @@
         portalItem: { id: "fa4dd90d0bfd470fb0dc9e32eab0bfef" },
       });
 
-      const view = new SceneView({
+      window._arcView = null; // expose for debugging
+      const view = window._arcView = new SceneView({
         container: "scene",
         map: scene,
         qualityProfile: "high",
@@ -519,23 +524,23 @@
       // Set building color via renderer
       let currentBuildingColor = "#c8c2ba"; // default light grey
       function setBuildingColor(hex) {
-        if (!buildingsLayer) return;
+        if (!buildingsLayer) { console.warn("No buildings layer"); return; }
         currentBuildingColor = hex;
-        buildingsLayer.renderer = {
-          type: "simple",
-          symbol: {
-            type: "mesh-3d",
-            symbolLayers: [{
-              type: "fill",
+        buildingsLayer.renderer = new SimpleRenderer({
+          symbol: new MeshSymbol3D({
+            symbolLayers: [new FillSymbol3DLayer({
               material: { color: hex },
-              edges: {
-                type: "solid",
+              edges: new SolidEdges3D({
                 color: [0, 0, 0, 0.15],
                 size: 0.5,
-              },
-            }],
-          },
-        };
+              }),
+            })],
+          }),
+        });
+        // Force re-render by toggling visibility
+        buildingsLayer.visible = false;
+        requestAnimationFrame(() => { buildingsLayer.visible = true; });
+        console.log("Building color set to", hex);
       }
 
       // Apply default color
