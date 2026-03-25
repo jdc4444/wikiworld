@@ -1055,12 +1055,21 @@
             if (bldg.found && bldg.height) buildingHeight = bldg.height;
           } catch (_) {}
 
-          // Auto-pitch: taller buildings → higher pitch (more eye-level)
-          // with camera altitude raised to see the full building
-          // 20m → 55°, 100m → 62°, 300m → 72°, 800m → 80° (clamped)
-          const autoPitch = Math.min(80, Math.max(55, 55 + buildingHeight * 0.03));
-          // Raise camera altitude for tall buildings so we look UP at them
-          const cameraAlt = Math.max(200, buildingHeight * 0.8);
+          // Camera framing based on building height:
+          // Short buildings (< 50m): zoom 18, tilt 60° — close ground view
+          // Medium (50-200m): zoom 17.5, tilt 55° — pull back a bit
+          // Tall (200-500m): zoom 17, tilt 50° — show full height with sky
+          // Supertall (500m+): zoom 16.5, tilt 45° — wide view
+          let autoZoom, autoTilt;
+          if (buildingHeight > 500) {
+            autoZoom = 16.5; autoTilt = 45;
+          } else if (buildingHeight > 200) {
+            autoZoom = 17; autoTilt = 50;
+          } else if (buildingHeight > 50) {
+            autoZoom = 17.5; autoTilt = 55;
+          } else {
+            autoZoom = 18; autoTilt = 60;
+          }
 
           // Show article overlay first, then fly
           const meta = buildingHeight ? `${buildingHeight.toFixed(0)}m` : "";
@@ -1069,9 +1078,9 @@
           // Fly to location, then highlight building
           await view.goTo({
             target: [targetLon, targetLat],
-            zoom: 18,
+            zoom: autoZoom,
             heading: 15,
-            tilt: autoPitch,
+            tilt: autoTilt,
           }, { duration: 2000 });
 
           // Highlight the building at the search location
