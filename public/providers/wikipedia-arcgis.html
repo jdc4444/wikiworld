@@ -1094,8 +1094,9 @@
             offsetMeters = h * 0.6 + 40;
           } else {
             // Tall/supertall — cinematic street-level hero shot
-            // 150m → zoom 18.5, tilt 70 | 443m → zoom 18, tilt 72 | 828m → zoom 17.5, tilt 72
-            autoTilt = Math.min(72, 68 + h * 0.01);
+            // 150m → zoom 18.5, tilt 66 | 443m → zoom 18, tilt 68 | 828m → zoom 17.5, tilt 70
+            // Lower tilt = camera looks more upward = captures spires/antennas
+            autoTilt = Math.min(70, 64 + h * 0.008);
             autoZoom = Math.max(17, 19 - h * 0.0025);
             offsetMeters = h * 0.3 + 30;
           }
@@ -1106,7 +1107,7 @@
           const headingRad = (heading + 180) * Math.PI / 180;
           const latPerMeter = 1 / 111320;
           const lngPerMeter = 1 / (111320 * Math.cos(targetLat * Math.PI / 180));
-          const centerOffset = offsetMeters * 0.3; // subtle offset, not full distance
+          const centerOffset = offsetMeters * 0.15; // minimal offset, keep building centered
           const camLat = targetLat + Math.cos(headingRad) * centerOffset * latPerMeter;
           const camLng = targetLon + Math.sin(headingRad) * centerOffset * lngPerMeter;
 
