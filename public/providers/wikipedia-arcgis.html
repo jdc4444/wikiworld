@@ -1055,33 +1055,39 @@
             if (bldg.found && bldg.height) buildingHeight = bldg.height;
           } catch (_) {}
 
-          // Camera framing based on building height:
-          // Short buildings (< 50m): zoom 18, tilt 60° — close ground view
-          // Medium (50-200m): zoom 17.5, tilt 55° — pull back a bit
-          // Tall (200-500m): zoom 17, tilt 50° — show full height with sky
-          // Supertall (500m+): zoom 16.5, tilt 45° — wide view
-          let autoZoom, autoTilt;
+          // Cinematic camera: position camera south of building, looking up at it
+          // The higher the building, the further back + more tilted up
+          const heading = 15; // consistent NNE heading
+          let autoZoom, autoTilt, offsetMeters;
           if (buildingHeight > 500) {
-            autoZoom = 15.5; autoTilt = 40;
+            autoZoom = 17.5; autoTilt = 75; offsetMeters = 400;
           } else if (buildingHeight > 300) {
-            autoZoom = 16; autoTilt = 45;
+            autoZoom = 18; autoTilt = 78; offsetMeters = 300;
           } else if (buildingHeight > 150) {
-            autoZoom = 16.5; autoTilt = 50;
+            autoZoom = 18; autoTilt = 75; offsetMeters = 200;
           } else if (buildingHeight > 50) {
-            autoZoom = 17; autoTilt = 55;
+            autoZoom = 18; autoTilt = 72; offsetMeters = 120;
           } else {
-            autoZoom = 17.5; autoTilt = 60;
+            autoZoom = 18; autoTilt = 65; offsetMeters = 80;
           }
+
+          // Offset camera target opposite to heading so building is IN the frame
+          // heading=15 means looking NNE, so offset camera target to SSW
+          const headingRad = (heading + 180) * Math.PI / 180; // opposite direction
+          const latPerMeter = 1 / 111320;
+          const lngPerMeter = 1 / (111320 * Math.cos(targetLat * Math.PI / 180));
+          const camLat = targetLat + Math.cos(headingRad) * offsetMeters * latPerMeter;
+          const camLng = targetLon + Math.sin(headingRad) * offsetMeters * lngPerMeter;
 
           // Show article overlay first, then fly
           const meta = buildingHeight ? `${buildingHeight.toFixed(0)}m` : "";
           showArticleOverlay(targetTitle, meta);
 
-          // Fly to location, then highlight building
+          // Fly to offset position looking toward the building
           await view.goTo({
-            target: [targetLon, targetLat],
+            target: [camLng, camLat],
             zoom: autoZoom,
-            heading: 15,
+            heading: heading,
             tilt: autoTilt,
           }, { duration: 2000 });
 
