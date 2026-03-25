@@ -1062,13 +1062,15 @@
           // Supertall (500m+): zoom 16.5, tilt 45° — wide view
           let autoZoom, autoTilt;
           if (buildingHeight > 500) {
-            autoZoom = 16.5; autoTilt = 45;
-          } else if (buildingHeight > 200) {
-            autoZoom = 17; autoTilt = 50;
+            autoZoom = 15.5; autoTilt = 40;
+          } else if (buildingHeight > 300) {
+            autoZoom = 16; autoTilt = 45;
+          } else if (buildingHeight > 150) {
+            autoZoom = 16.5; autoTilt = 50;
           } else if (buildingHeight > 50) {
-            autoZoom = 17.5; autoTilt = 55;
+            autoZoom = 17; autoTilt = 55;
           } else {
-            autoZoom = 18; autoTilt = 60;
+            autoZoom = 17.5; autoTilt = 60;
           }
 
           // Show article overlay first, then fly
