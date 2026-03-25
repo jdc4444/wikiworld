@@ -1100,13 +1100,15 @@
             offsetMeters = h * 0.5 + 40;
           }
 
-          // Offset camera target opposite to heading so building is IN the frame
-          // heading=15 means looking NNE, so offset camera target to SSW
-          const headingRad = (heading + 180) * Math.PI / 180; // opposite direction
+          // Offset camera slightly so building is centered in frame
+          // Move target ~30% of offset distance opposite to heading
+          // This places the building in the center rather than at the top edge
+          const headingRad = (heading + 180) * Math.PI / 180;
           const latPerMeter = 1 / 111320;
           const lngPerMeter = 1 / (111320 * Math.cos(targetLat * Math.PI / 180));
-          const camLat = targetLat + Math.cos(headingRad) * offsetMeters * latPerMeter;
-          const camLng = targetLon + Math.sin(headingRad) * offsetMeters * lngPerMeter;
+          const centerOffset = offsetMeters * 0.3; // subtle offset, not full distance
+          const camLat = targetLat + Math.cos(headingRad) * centerOffset * latPerMeter;
+          const camLng = targetLon + Math.sin(headingRad) * centerOffset * lngPerMeter;
 
           // Show article overlay first, then fly
           const meta = buildingHeight ? `${buildingHeight.toFixed(0)}m` : "";
